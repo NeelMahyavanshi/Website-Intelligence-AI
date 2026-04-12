@@ -1,57 +1,24 @@
-import asyncio
-from datetime import datetime
-import json
-import hashlib
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
-seen_hashes = set()
+print(os.getenv("OPENROUTER_API_KEY"))
+print(os.getenv("OPENROUTER_MODEL"))
 
-def hash_content(text):
-    return hashlib.md5(text.encode()).hexdigest()
+client = OpenAI(
+  base_url="https://openrouter.ai/api/v1",
+  api_key=os.getenv("OPENROUTER_API_KEY"),
+)
 
-async def main(start_url, max_depth=2, max_pages=5, output_file="crawled_data.jsonl"):
-    config = CrawlerRunConfig(
-        deep_crawl_strategy=BFSDeepCrawlStrategy(
-            max_depth=max_depth, 
-            include_external=False,
-            max_pages=max_pages
-        ),
-        scraping_strategy=LXMLWebScrapingStrategy(),
-        verbose=True
-    )
-    try:
+completion = client.chat.completions.create(
+  model="openrouter/free",
+  messages=[
+    {
+      "role": "user",
+      "content": "What is the meaning of life?"
+    }
+  ]
+)
 
-        async with AsyncWebCrawler() as crawler:
-
-            print(f"Starting crawl. Data will be saved to {output_file}")
-
-            results = await crawler.arun(start_url, config=config)
-
-            print(f"Crawled {len(results)} pages in total")
-
-            count = 0
-
-            with open(output_file, "a", encoding="utf-8") as f:
-
-                for result in results:  
-                    
-                    data = {
-                                "url": result.url,
-                                "markdown": result.markdown,
-                                "metadata": result.metadata,
-                                "timestamp":  datetime.now().isoformat()  
-                            }
-                    
-                    
-                    f.write(json.dumps(data) + "\n")
-                    count += 1
-
-                print(f"✓ Saved {count} pages")
-
-    except Exception as e:
-        print(f"Error during crawling: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(main("https://docs.agno.com/"))
+print(completion.choices[0].message.content)
