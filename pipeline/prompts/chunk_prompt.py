@@ -1,4 +1,4 @@
-SYSTEM_PROMPT = """
+chunk_prompt = """
 
       You are a data processing system.
 
@@ -31,7 +31,8 @@ SYSTEM_PROMPT = """
               "summary": "...",
               "keywords": ["..."],
               "entities": ["..."],
-              "content_type": "guide | product | docs | blog"
+              "content_type": "guide | product | docs | blog",
+              "extra_metadata": {...}
             }
           }
         ]
@@ -74,7 +75,8 @@ SYSTEM_PROMPT = """
               "summary": "...",
               "keywords": ["..."],
               "entities": ["..."],
-              "content_type": "guide | product | docs | blog"
+              "content_type": "guide | product | docs | blog",
+              "extra_metadata": {...}
             }
           }
         ]
@@ -84,5 +86,37 @@ SYSTEM_PROMPT = """
         {
           "chunks": [...]
         }
+
+        For each chunk, populate extra_metadata with page-specific useful fields.
+
+          Examples:
+
+          Docs:
+          - api_endpoints
+          - methods
+          - error_codes
+
+          Product:
+          - price
+          - brand
+          - specs
+
+          FAQ:
+          - question
+          - intent
+
+          Blog:
+          - topic
+          - timeline
+          - audience
+
+          Only include fields that are strongly supported by the content.
+          Do not hallucinate.
+          If none apply, return empty object.
+
+          Use concise factual fields only.
+          No opinions.
+          No guessed values.
+          No duplicate data already in standard metadata.
 
       """
