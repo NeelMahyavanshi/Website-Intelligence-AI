@@ -4,10 +4,13 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pipeline.prompts.build_chunk_prompt import base_prompt, templates 
 from typing import Dict, Any
-from chunk_planner import create_chunk_plan
+from pipeline.chunk_planner import create_chunk_plan
 import os
 load_dotenv(override=True)
-
+import re
+import hashlib
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import ChatOpenAI
 
 
 class ChunkMetadata(BaseModel):
@@ -26,8 +29,16 @@ class Chunk(BaseModel):
 class ChunkOutput(BaseModel):
     chunks: list[Chunk]
 
-llm = ChatGoogleGenerativeAI(model=os.getenv("GOOGLE_MODEL"), temperature=0)
+# llm = ChatGoogleGenerativeAI(model=os.getenv("GOOGLE_MODEL"), temperature=0)
 
+print(f"[CHUNKER] Initializing LLM with model: {os.getenv('OPENROUTER_MODEL')}")
+
+llm = ChatOpenAI(
+    model=os.getenv("OPENROUTER_MODEL"),
+    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+    openai_api_base=os.getenv("OPENROUTER_BASE_URL"),
+    temperature=0,
+)
 def build_chunk_prompt(plan):
 
     type_prompt = templates.get(plan.page_type, templates["general"])
@@ -54,8 +65,6 @@ def build_chunk_prompt(plan):
 
     return f"{base_prompt}\n{type_prompt}\nAdditional Rules:\n{modifier_text}"
 
-import hashlib
-import re
 
 
 def normalize_text(text: str) -> str:
@@ -117,6 +126,37 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
 
     return validated
 
+
+def fallback_chunk_page(content: str) -> list[dict]:
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1800,
+        chunk_overlap=250,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+
+    texts = splitter.split_text(content)
+
+    chunks = []
+
+    for i, text in enumerate(texts, start=1):
+        chunks.append({
+            "text": text,
+            "metadata": {
+                "page_title": "unknown",
+                "section_title": f"fallback_chunk_{i}",
+                "summary": text[:180],
+                "keywords": [],
+                "entities": [],
+                "content_type": "general",
+                "extra_metadata": {
+                    "generated_by": "recursive_splitter"
+                }
+            }
+        })
+
+    return chunks
+
 def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
 
     model_with_structure = llm.with_structured_output(ChunkOutput)
@@ -163,20 +203,3 @@ def process_record(record: dict) -> list[dict]:
 
     return enriched_chunks
 
-
-# with open("crawled_data.jsonl", "r", encoding="utf-8") as f:
-#     for line in f:
-#         line = line.strip()
-#         if not line:
-#             continue
-#         try:
-#             record = json.loads(line)
-#         except json.JSONDecodeError:
-#             print("Invalid JSON line, skipping...")
-#             continue
-#         if record.get("content") == "" or len(record.get("content", "")) < 10:
-#             print("No content, skipping...")
-#             continue
-#         print(f"Processing: {record.get('url')}")
-#         enriched_chunks = process_record(record)
-#         print(enriched_chunks)

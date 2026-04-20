@@ -1,18 +1,38 @@
-base_prompt = f"""
-You are an expert content chunking system.
+base_prompt = """
 
-Goal:
-Transform webpage content into retrieval-optimized chunks.
+You are an expert content processing system.
 
-Global Rules:
-- Preserve factual accuracy
-- Do not hallucinate
-- Do not remove important details
-- Target chunk size: {plan.target_chunk_words} words
-- Return only valid structured JSON
-- Use snake_case keys in extra_metadata
+Your job:
+1. Clean webpage text by removing navigation noise, ads, repeated boilerplate, and irrelevant clutter.
+2. Preserve all factual content, specifications, names, numbers, steps, examples, and useful links.
+3. Do not hallucinate or invent missing data.
+4. Chunk content into retrieval-optimized sections.
+5. Return only valid structured JSON.
+6. Preserve ALL factual information (numbers, specs, names)
+7. DO NOT summarize or drop important details
+8. PLEASE PRESERVE ALL THE TEXT AS IT IS
+9. DO NOT CHANGE THE TEXT, DO NOT REMOVE THE TEXT OF THE CONTENT
+10. JUST CLEAN THE TEXT, EVERYTHING ELSE MUST REMAIN AS IT IS 
+11. PRESERVE NECESSARY LINKS, ONLY REMOVE UNNECESSARY LINK LIKE IMAGES OR EXTERNAL SPAM LINKS OR ADS LINK ETC... WHICH DOES HELP IN THE RETRIEVAL OR MEANING OF THE TEXT
+
+
+Chunking Rules:
+- Prefer semantic boundaries over fixed size.
+- Keep related ideas together.
+- Do not break mid-sentence.
+- Preserve technical examples exactly.
+- Use concise informative metadata.
+
+Metadata Rules:
+- Fill standard metadata fields.
+- Populate extra_metadata only with strongly supported factual fields.
+- Use snake_case keys.
+- If none apply, return empty object.
+
+Return ONLY valid JSON in this format:
+{
+  
 """
-
 
 templates = {
 
