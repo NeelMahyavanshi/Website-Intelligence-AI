@@ -12,8 +12,7 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from pydantic import BaseModel, Field
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
+from llm_model import llm
 import os
 from dotenv import load_dotenv
 load_dotenv(override=True)
@@ -62,18 +61,7 @@ class CrawlPlan_config(BaseModel):
     pruning_threshold: float = Field(..., description="Threshold for pruning content. 0.3 to 0.8")
     notes: str = Field(..., description="Any specific instructions for crawling this site")
 
-# print(f"[CRAWLER] Initializing LLM with model: {os.getenv('GOOGLE_MODEL')}")
-
-# llm = ChatGoogleGenerativeAI(model=os.getenv("GOOGLE_MODEL"), temperature=0)
-
-print(f"[CRAWLER] Initializing LLM with model: {os.getenv('OPENROUTER_MODEL')}")
-
-llm = ChatOpenAI(
-    model=os.getenv("OPENROUTER_MODEL"),
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-    openai_api_base=os.getenv("OPENROUTER_BASE_URL"),
-    temperature=0,
-)
+print(f"[CRAWLER] Using shared LLM instance from llm_model")
 
 
 async def plan_crawl(url:str) -> CrawlPlan_config:

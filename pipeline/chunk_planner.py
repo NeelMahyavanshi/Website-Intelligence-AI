@@ -1,14 +1,13 @@
 """Website Intelligence AI - Chunk Planner Module
 
-This module determines the optimal chunking strategy for crawled web pages.
-It uses heuristic routing for quick classification and falls back to LLM for complex cases.
+Determines optimal chunking strategy for crawled web pages using heuristic routing and LLM.
 """
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 from typing import List, Literal
 from pipeline.prompts.chunk_planner_prompt import chunk_planner_prompt as SYSTEM_PROMPT
-from langchain_openai import ChatOpenAI
+from llm_model import llm
 import os
 from dotenv import load_dotenv
 load_dotenv(override=True)
@@ -16,7 +15,7 @@ load_dotenv(override=True)
 print("[CHUNK_PLANNER] Module loaded successfully")
 
 class ChunkPlan(BaseModel):
-    """Schema for the chunking strategy plan created for a page.
+    """Schema for optimal chunking strategy determined for a page.
     
     Defines how a page should be split into chunks based on its content type.
     """
@@ -30,15 +29,15 @@ class ChunkPlan(BaseModel):
     notes: str = Field("",description="Any specific instructions for chunking this page")
 
 def heuristic_router(record: dict) -> ChunkPlan:
-    """Route page to appropriate chunking strategy based on URL and title patterns.
+    """Route page to chunking strategy based on URL and title patterns.
     
-    Uses regex patterns to quickly classify pages without LLM inference.
+    Uses fast regex-based classification without LLM inference.
     
     Args:
         record: Crawled page record with url, metadata, and content
         
     Returns:
-        ChunkPlan with optimized settings for this page type
+        ChunkPlan with optimized settings for page type
     """
     print(f"[CHUNK_PLANNER] Routing page with heuristic classifier...")
     url = record.get("url", "unknown")
@@ -139,16 +138,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
 
 
-# llm = ChatGoogleGenerativeAI(model=os.getenv("GOOGLE_MODEL"), temperature=0)
-
 print(f"[CHUNK_PLANNER] Initializing LLM with model: {os.getenv('OPENROUTER_MODEL')}")
-
-llm = ChatOpenAI(
-    model=os.getenv("OPENROUTER_MODEL"),
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-    openai_api_base=os.getenv("OPENROUTER_BASE_URL"),
-    temperature=0,
-)
 
 print(f"[CHUNK_PLANNER] Configured structured output for ChunkPlan")
 llm_chunk_planner = llm.with_structured_output(ChunkPlan)
@@ -157,7 +147,7 @@ def llm_planner(record: dict) -> ChunkPlan:
     """Use LLM to analyze page content and create optimal chunking plan.
     
     Called when heuristic routing cannot confidently classify a page.
-    Uses page content sample to make intelligent chunking decisions.
+    Uses page content sample for intelligent chunking decisions.
     
     Args:
         record: Crawled page record with url, metadata, and content
@@ -166,14 +156,13 @@ def llm_planner(record: dict) -> ChunkPlan:
         ChunkPlan optimized for this specific page
     """
     print(f"[CHUNK_PLANNER] Invoking LLM planner for complex page...")
-    
+
     url = record.get("url", "unknown")
     raw_html = record.get("content", "")[:3000]
     crawled_metadata = record.get("metadata", {})
     ChunkPlan_config = record.get("crawl_config", {})
     
     print(f"[CHUNK_PLANNER] Sending request to LLM with content sample...")
-
     response = llm_chunk_planner.invoke(
         [
             ("system", SYSTEM_PROMPT),
