@@ -5,7 +5,6 @@ Uses LLM-based intelligent splitting with validation and enrichment.
 """
 
 from pydantic import BaseModel, Field
-from pipeline.prompts.chunk_prompt import chunk_prompt as SYSTEM_PROMPT
 from dotenv import load_dotenv
 from pipeline.prompts.build_chunk_prompt import base_prompt, templates 
 from typing import Dict, Any
