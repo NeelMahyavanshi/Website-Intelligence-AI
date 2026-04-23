@@ -145,7 +145,7 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
             continue
 
         # 2. Skip chunks too short
-        if len(text) < 80:
+        if len(text) < 25 and len(text.split()) < 5:
             removed_count += 1
             continue
 
@@ -214,7 +214,7 @@ def fallback_chunk_page(content: str) -> list[dict]:
             "metadata": {
                 "page_title": "unknown",
                 "section_title": f"fallback_chunk_{i}",
-                "summary": text[:180],
+                "summary": text[:160].strip(),
                 "keywords": [],
                 "entities": [],
                 "content_type": "general",
@@ -274,7 +274,7 @@ def process_record(record: dict) -> list[dict]:
     prompt = build_chunk_prompt(plan)
 
     url = record.get("url", "unknown")
-    raw_html = record.get("content", "")[:12000]
+    raw_html = record.get("content", "").strip()[:10000]
     crawled_metadata = record.get("metadata", {})
     timestamp = record.get("timestamp", "unknown")
 
@@ -292,7 +292,8 @@ def process_record(record: dict) -> list[dict]:
     print(f"[CHUNKER] Enriching chunks with metadata...")
     enriched_chunks = []
     for i, chunk in enumerate(chunks):
-        chunk_dict = chunk.model_dump()
+        chunk_dict = chunk.copy()
+
         chunk_dict["metadata"].update({
             "source_url": url,
             "timestamp": timestamp,
@@ -303,12 +304,11 @@ def process_record(record: dict) -> list[dict]:
             "og_title": crawled_metadata.get("title"),
             "og_description": crawled_metadata.get("description"),
         })
+
         enriched_chunks.append(chunk_dict)
 
-    # Final validation
-    validated_chunks = validate_chunks(chunks)
+    print(f"[CHUNKER] Returned {len(enriched_chunks)} chunks for {url}")
     print(f"[CHUNKER] === PROCESSING COMPLETE ===")
-    print(f"[CHUNKER] Total enriched chunks: {len(enriched_chunks)}")
 
     return enriched_chunks
 
