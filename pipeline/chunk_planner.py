@@ -127,7 +127,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
     else:
         print(f"[CHUNK_PLANNER] ⚠ Could not classify page, returning default")
         return ChunkPlan(
-            page_type="other",
+            page_type="general",
             chunk_style="thematic",
             target_chunk_words=300,
             preserve_code_blocks=False,
@@ -198,7 +198,7 @@ def create_chunk_plan(record: dict) -> ChunkPlan:
     try:
         # Try fast heuristic routing first
         heuristic_router_plan = heuristic_router(record)
-        if heuristic_router_plan.page_type != "other":
+        if heuristic_router_plan.page_type != "general":
             print(f"[CHUNK_PLANNER] ✓ Using heuristic plan for: {record.get('url', 'unknown')}")
             return heuristic_router_plan
         else:

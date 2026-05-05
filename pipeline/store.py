@@ -236,7 +236,7 @@ async def ingest(
     # Fetch existing content hashes to skip unchanged pages
     existing_hashes: set[str] = set()
     try:
-        got = collection.get(include=["metadatas"], limit=10000)
+        got = collection.get(include=["metadatas"], limit=300)
         for m in (got.get("metadatas") or []):
             h = m.get("content_hash")
             if h:
