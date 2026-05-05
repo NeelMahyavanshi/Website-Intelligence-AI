@@ -10,14 +10,18 @@ from pipeline.prompts.build_chunk_prompt import base_prompt, templates
 from typing import Dict, Any
 from pipeline.chunk_planner import create_chunk_plan
 from llm_model import llm
+from utils.logger import get_logger
 import os
 load_dotenv(override=True)
 import re
 import hashlib
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-print("[CHUNKER] Module loaded successfully")
+logger = get_logger("CHUNKER")
 
+# ============================================================
+# CHUNK SCHEMAS
+# ============================================================
 
 class ChunkMetadata(BaseModel):
     """Metadata associated with each chunk.
@@ -44,7 +48,13 @@ class ChunkOutput(BaseModel):
     """Output schema for LLM chunking response."""
     chunks: list[Chunk]
 
-print(f"[CHUNKER] Using shared LLM instance from llm_model")
+
+# Configure LLM for structured chunk output
+llm_chunker = llm.with_structured_output(ChunkOutput)
+
+# ============================================================
+# PROMPT BUILDING
+# ============================================================
 
 def build_chunk_prompt(plan):
     """Build system prompt for chunking based on chunk plan.
@@ -57,8 +67,6 @@ def build_chunk_prompt(plan):
     Returns:
         String containing the complete system prompt for LLM
     """
-    print(f"[CHUNKER] Building chunk prompt for page_type={plan.page_type}...")
-    
     # Get template based on page type
     type_prompt = templates.get(plan.page_type, templates["general"])
 
@@ -82,7 +90,7 @@ def build_chunk_prompt(plan):
         modifiers.append(f"- Special notes: {plan.notes}")
 
     modifier_text = "\n".join(modifiers)
-    print(f"[CHUNKER] ✓ Chunk prompt built with {len(modifiers)} modifiers")
+    logger.debug("Chunk prompt built with %d modifiers for type=%s", len(modifiers), plan.page_type)
     return f"{base_prompt}\n{type_prompt}\nAdditional Rules:\n{modifier_text}"
 
 
@@ -129,7 +137,6 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
     Returns:
         List of validated, cleaned chunks
     """
-    print(f"[CHUNKER] Validating {len(chunks)} chunks...")
     validated = []
     seen_hashes = set()
     removed_count = 0
@@ -138,29 +145,29 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
         text = chunk.get("text", "").strip()
         metadata = chunk.get("metadata", {})
 
-        # 1. Skip empty chunks
+        # Skip empty chunks
         if not text:
             removed_count += 1
             continue
 
-        # 2. Skip chunks too short
+        # Skip chunks too short
         if len(text) < 25 and len(text.split()) < 5:
             removed_count += 1
             continue
 
-        # 3. Skip chunks too long
+        # Skip chunks too long
         if len(text) > 4000:
             removed_count += 1
             continue
 
-        # 4. Skip duplicate chunks based on text hash
+        # Skip duplicate chunks based on text hash
         h = text_hash(text)
         if h in seen_hashes:
             removed_count += 1
             continue
         seen_hashes.add(h)
 
-        # 5. Set metadata defaults
+        # Set metadata defaults
         metadata.setdefault("page_title", "unknown")
         metadata.setdefault("section_title", "")
         metadata.setdefault("summary", text[:160])
@@ -169,7 +176,7 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
         metadata.setdefault("content_type", "general")
         metadata.setdefault("extra_metadata", {})
 
-        # 6. Clean up keywords - deduplicate and normalize
+        # Clean up keywords - deduplicate and normalize
         metadata["keywords"] = list({
             k.strip().lower()
             for k in metadata.get("keywords", [])
@@ -179,7 +186,7 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
         chunk["metadata"] = metadata
         validated.append(chunk)
 
-    print(f"[CHUNKER] ✓ Validation complete: {len(validated)} valid chunks, {removed_count} removed")
+    logger.info("Validation complete: %d valid, %d removed", len(validated), removed_count)
     return validated
 
 
@@ -194,19 +201,16 @@ def fallback_chunk_page(content: str) -> list[dict]:
     Returns:
         List of chunk dictionaries from recursive splitting
     """
-    print(f"[CHUNKER] Performing fallback chunking using recursive splitter...")
+    logger.info("Performing fallback chunking using recursive splitter")
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1800,
         chunk_overlap=250,
         separators=["\n\n", "\n", ". ", " ", ""]
     )
 
-    print(f"[CHUNKER] Splitting content into chunks...")
     texts = splitter.split_text(content)
 
     chunks = []
-    print(f"[CHUNKER] Creating {len(texts)} chunk objects...")
-
     for i, text in enumerate(texts, start=1):
         chunks.append({
             "text": text,
@@ -223,7 +227,7 @@ def fallback_chunk_page(content: str) -> list[dict]:
             }
         })
 
-    print(f"[CHUNKER] ✓ Fallback chunking complete: {len(chunks)} chunks created")
+    logger.info("Fallback chunking complete: %d chunks created", len(chunks))
     return chunks
 
 def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
@@ -236,14 +240,14 @@ def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
     Returns:
         ChunkOutput with list of chunks from LLM
     """
-    print(f"[CHUNKER] Calling LLM chunker...")
+    logger.debug("Calling LLM chunker for content sample")
     model_with_structure = llm.with_structured_output(ChunkOutput)
 
     response = model_with_structure.invoke([
         ("system", prompt),
         ("human", content)
     ])
-    print(f"[CHUNKER] ✓ LLM returned {len(response.chunks)} chunks")
+    logger.debug("LLM returned %d chunks", len(response.chunks))
     return response
 
 def process_record(record: dict) -> list[dict]:
@@ -262,33 +266,35 @@ def process_record(record: dict) -> list[dict]:
     Returns:
         List of enriched, validated chunk dictionaries
     """
-    print(f"[CHUNKER] === PROCESSING RECORD ===")
-    print(f"[CHUNKER] URL: {record.get('url', 'unknown')}")
+    url = record.get("url", "unknown")
+    logger.info("Processing record: %s", url)
     
     # Step 1: Get chunking strategy
-    print(f"[CHUNKER] Creating chunk plan...")
     plan = create_chunk_plan(record)
 
     # Step 2: Build prompt from plan
     prompt = build_chunk_prompt(plan)
 
-    url = record.get("url", "unknown")
     raw_html = record.get("content", "").strip()[:10000]
     crawled_metadata = record.get("metadata", {})
     timestamp = record.get("timestamp", "unknown")
 
     # Step 3: Call LLM chunker
-    print(f"[CHUNKER] Calling LLM chunker with content sample...")
-    llm_response = call_llm_chunker(raw_html, prompt)
-    chunks = llm_response.chunks
+    try:
+        llm_response = call_llm_chunker(raw_html, prompt)
+        chunks = llm_response.chunks
+        logger.debug("LLM returned %d chunks for %s", len(chunks), url)
+    except Exception as e:
+        logger.warning("LLM chunking failed for %s, using fallback", url)
+        chunks_raw = fallback_chunk_page(raw_html)
+        # Convert to Chunk objects for consistency
+        chunks = [Chunk(**c) for c in chunks_raw]
 
     # Step 4: Convert and validate
-    print(f"[CHUNKER] Converting and validating chunks...")
     chunks = [c.model_dump() for c in chunks]
     chunks = validate_chunks(chunks)
     
     # Step 5: Enrich with metadata
-    print(f"[CHUNKER] Enriching chunks with metadata...")
     enriched_chunks = []
     for i, chunk in enumerate(chunks):
         chunk_dict = chunk.copy()
@@ -306,8 +312,6 @@ def process_record(record: dict) -> list[dict]:
 
         enriched_chunks.append(chunk_dict)
 
-    print(f"[CHUNKER] Returned {len(enriched_chunks)} chunks for {url}")
-    print(f"[CHUNKER] === PROCESSING COMPLETE ===")
-
+    logger.info("Processing complete: %d chunks for %s", len(enriched_chunks), url)
     return enriched_chunks
 

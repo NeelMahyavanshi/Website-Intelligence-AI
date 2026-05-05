@@ -18,8 +18,11 @@ from dotenv import load_dotenv
 from pipeline.crawler import crawl_url
 from pipeline.chunker import process_record
 from tenacity import retry, stop_after_attempt, wait_exponential
+from utils.logger import get_logger
 
-load_dotenv(override=True)  
+load_dotenv(override=True)
+
+logger = get_logger("STORE")
 
 # ============================================================
 # GLOBAL EMBEDDING FUNCTION
@@ -36,12 +39,19 @@ gemini_ef = GoogleGeminiEmbeddingFunction(
 # ============================================================
 
 def build_company_config(company_type: str) -> dict:
-    """
-    Agent picks a preset based on the company's website type.
-    - space: distance metric for dense vectors
-    - model: Gemini embedding model
-    - dense_weight / sparse_weight: RRF fusion weights
-    - task_type: Gemini task hint
+    """Retrieves the vector storage config for a given company type.
+    
+    Different company types benefit from different embedding spaces and RRF weights:
+    - space: distance metric for dense vectors (cosine/l2)
+    - model: Gemini embedding model for dense vectors
+    - dense_weight/sparse_weight: Relative importance in RRF fusion
+    - task_type: Gemini task hint for better embeddings
+    
+    Args:
+        company_type: Type of company (tech_docs, support, ecommerce, blog, or default)
+        
+    Returns:
+        Dictionary with space, model, dense_weight, sparse_weight, and task_type
     """
     presets = {
         "tech_docs":  {"space": "cosine", "model": "gemini-embedding-001",
@@ -69,13 +79,20 @@ def build_company_config(company_type: str) -> dict:
 
 
 def page_hash(content: str) -> str:
+    """Computes MD5 hash of page content for deduplication."""
     return hashlib.md5(content.encode()).hexdigest()
 
 def chunk_id(url: str, text: str) -> str:
+    """Generates a unique chunk ID from URL and text hash."""
     h = hashlib.md5(text.encode()).hexdigest()
     return f"{url}#{h}"
 
 def flatten_meta(meta: dict) -> dict:
+    """Flattens metadata dict to only include Chroma-compatible types.
+    
+    Converts lists to comma-separated strings and serializes complex objects.
+    Chroma requires metadata values to be str, int, float, or bool.
+    """
     clean = {}
 
     for k, v in (meta or {}).items():
@@ -100,6 +117,20 @@ def flatten_meta(meta: dict) -> dict:
 # ============================================================
 
 def build_schema(cfg: dict) -> Schema:
+    """Builds Chroma schema with both dense and sparse vector indexes.
+    
+    Creates two indexes:
+    1. Dense vectors via Gemini embeddings for semantic search
+    2. Sparse vectors via SPLADE for keyword matching
+    
+    Uses RRF fusion in retriever to combine both signals.
+    
+    Args:
+        cfg: Config dict with 'space' key (cosine/l2)
+        
+    Returns:
+        Chroma Schema configured with dual indexes
+    """
     schema = Schema()
 
     # Dense semantic search
@@ -126,7 +157,10 @@ def build_schema(cfg: dict) -> Schema:
 # ============================================================
 
 def _safe_id(name: str) -> str:
-    """Ensure the company_id matches Chroma's collection-name rules."""
+    """Sanitizes company_id to match Chroma's collection-name rules.
+    
+    Chroma allows only alphanumeric, dots, underscores, hyphens (max 200 chars).
+    """
     cleaned = re.sub(r"[^a-zA-Z0-9._-]", "_", name or "")[:200]
     return cleaned or "default"
 
@@ -136,10 +170,24 @@ def get_collection(
     company_id: str,
     collection_name: str,
     company_type: str,
-):
+) -> Any:
+    """Gets or creates a Chroma collection with caching.
+    
+    Handles collection initialization with dual indexes (dense + sparse).
+    Collections are cached in memory to avoid repeated cloud API calls.
+    
+    Args:
+        company_id: Unique company identifier
+        collection_name: Name of the collection (e.g., 'web_docs')
+        company_type: Type determines embedding space and RRF weights
+        
+    Returns:
+        Chroma collection object ready for upsert/query operations
+    """
     cache_key = f"{company_id}_{collection_name}"
 
     if cache_key not in _collection_cache:
+        logger.debug("Creating collection for %s/%s (type=%s)", company_id, collection_name, company_type)
 
         cfg = build_company_config(company_type)
 
@@ -161,6 +209,7 @@ def get_collection(
         )
 
         _collection_cache[cache_key] = collection
+        logger.info("Collection ready: %s (dense_weight=%.1f, sparse_weight=%.1f)", full_collection_name, cfg["dense_weight"], cfg["sparse_weight"])
         
     return _collection_cache[cache_key]
 
@@ -172,8 +221,20 @@ def get_collection(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10)
 )
-def safe_upsert(collection, batch):
-
+def safe_upsert(collection, batch) -> None:
+    """Safely upserts a batch of chunks to the collection with retry logic.
+    
+    Handles transient errors via exponential backoff (up to 3 attempts).
+    Generates deterministic chunk IDs from URL + text hash for deduplication.
+    Flattens metadata to Chroma-compatible types.
+    
+    Args:
+        collection: Chroma collection object
+        batch: List of dicts with 'text' and 'metadata' keys
+        
+    Raises:
+        Exception: If upsert fails after 3 retries
+    """
     ids = [
         chunk_id(
             c["metadata"]["source_url"],
@@ -197,6 +258,7 @@ def safe_upsert(collection, batch):
         documents=docs,
         metadatas=metas
     )
+    logger.debug("Upserted batch of %d chunks", len(batch))
 
 
 # ============================================================
@@ -209,14 +271,27 @@ async def ingest(
     company_type: str,
     collection_name: str = "web_docs"
 ) -> int:
-
+    """Ingests a website into the vector store via full pipeline.
     
+    Pipeline:
+    1. Crawl website using intelligent BFS strategy
+    2. Remove blank pages
+    3. Chunk each page using LLM-based intelligent chunking
+    4. Deduplicate against existing collection (by content hash)
+    5. Batch upsert to Chroma with automatic retries
+    
+    Args:
+        start_url: Root URL to crawl
+        company_id: Company identifier for collection naming
+        company_type: Type affects embedding space and RRF weights
+        collection_name: Defaults to 'web_docs'
+        
+    Returns:
+        Total number of chunks ingested
+    """
+    logger.info("Starting ingestion pipeline for %s (company_type=%s)", start_url, company_type)
 
-    print("=" * 60)
-    print("STARTING INGEST")
-    print("=" * 60)
-
-    # Crawl
+    # Crawl website
     pages = await crawl_url(start_url)
 
     # Remove blank pages
@@ -225,7 +300,7 @@ async def ingest(
         if p.get("content", "").strip()
     ]
 
-    print("Pages found:", len(pages))
+    logger.info("Crawled %d pages from %s", len(pages), start_url)
 
     collection = get_collection(
         company_id,
@@ -241,47 +316,49 @@ async def ingest(
             h = m.get("content_hash")
             if h:
                 existing_hashes.add(h)
+        logger.debug("Found %d existing content hashes", len(existing_hashes))
     except Exception as e:
-        print("Could not read existing hashes:", e)
+        logger.warning("Could not read existing hashes: %s", str(e))
 
 
     all_chunks = []
 
-    # Process each page
+    # Process each page: intelligent chunking with deduplication
     for page in pages:
 
         try:
             h = page_hash(page["content"])
             if h in existing_hashes:
-                print("Skipping unchanged page:", page["url"])
+                logger.debug("Skipping unchanged page: %s", page["url"])
                 continue
 
             page["metadata"]["content_hash"] = h
 
+            # LLM-based intelligent chunking with validation
             chunks = process_record(page)
 
             for c in chunks:
                 c.setdefault("metadata", {})
                 c["metadata"]["content_hash"] = h
-                # also useful for dedup/filtering later:
+                # Preserve source URL for retrieval result formatting
                 c["metadata"].setdefault("source_url", page.get("url"))
 
 
             all_chunks.extend(chunks)
 
-            print("Processed:", page["url"])
+            logger.debug("Processed %d chunks from: %s", len(chunks), page["url"])
 
         except Exception as e:
-            print("Failed page:", page["url"], e)
+            logger.error("Failed to process page %s: %s", page["url"], str(e), exc_info=True)
             continue
 
     if not all_chunks:
-        print("No chunks generated.")
+        logger.warning("No chunks generated from any pages")
         return 0
 
-    print("Total chunks:", len(all_chunks))
+    logger.info("Generated %d total chunks from %d pages", len(all_chunks), len(pages))
 
-    # Batch save
+    # Batch save to Chroma with automatic retries
     BATCH_SIZE = 250
 
     for i in range(0, len(all_chunks), BATCH_SIZE):
@@ -290,8 +367,8 @@ async def ingest(
 
         safe_upsert(collection, batch)
 
-        print(f"Saved batch {i} -> {i + len(batch)}")
+        logger.info("Saved batch %d/%d (%d chunks)", i // BATCH_SIZE + 1, (len(all_chunks) + BATCH_SIZE - 1) // BATCH_SIZE, len(batch))
 
-    print("INGEST COMPLETE")
+    logger.info("Ingest complete: %d chunks successfully stored", len(all_chunks))
 
     return len(all_chunks)

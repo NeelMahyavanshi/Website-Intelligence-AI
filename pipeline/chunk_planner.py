@@ -8,11 +8,17 @@ from pydantic import BaseModel, Field
 from typing import List, Literal
 from pipeline.prompts.chunk_planner_prompt import chunk_planner_prompt as SYSTEM_PROMPT
 from llm_model import llm
+from utils.logger import get_logger
 import os
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 
-print("[CHUNK_PLANNER] Module loaded successfully")
+logger = get_logger("CHUNK_PLANNER")
+
+# ============================================================
+# CHUNK PLAN SCHEMA
+# ============================================================
 
 class ChunkPlan(BaseModel):
     """Schema for optimal chunking strategy determined for a page.
@@ -39,13 +45,13 @@ def heuristic_router(record: dict) -> ChunkPlan:
     Returns:
         ChunkPlan with optimized settings for page type
     """
-    print(f"[CHUNK_PLANNER] Routing page with heuristic classifier...")
     url = record.get("url", "unknown")
-    title = record.get("metadata", {}).get("title", "").lower()
+    title = (record.get("metadata") or {}).get("title") or ""
+    title = title.lower()
 
     # Check if this is documentation
     if "/docs" in url or "/api/" in url or "/guides" in url or "/tutorials" in url or "/reference" in url or "documentation" in title:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: DOCS page")
+        logger.debug("Classified as docs: %s", url)
         return ChunkPlan(
             page_type="docs",
             chunk_style="section_based",
@@ -58,7 +64,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
     # Check if this is pricing page
     elif "pricing" in url or "plans" in url or "billing" in url or "pricing" in title:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: PRICING page")
+        logger.debug("Classified as pricing: %s", url)
         return ChunkPlan(
             page_type="pricing",
             chunk_style="pricing_blocks",
@@ -72,7 +78,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
 
     # Check if this is a product/feature page
     elif "/product" in url or "/features" in url or "buy" in url or "product" in title or "features" in title:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: PRODUCT page")
+        logger.debug("Classified as product: %s", url)
         return ChunkPlan(
             page_type="product",
             chunk_style="feature_spec",
@@ -85,7 +91,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
     # Check if this is a blog/article page
     elif "/blog" in url or "article" in url or "published" in url or "blog" in title:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: BLOG page")
+        logger.debug("Classified as blog: %s", url)
         return ChunkPlan(
             page_type="blog",
             chunk_style="semantic_flow",
@@ -99,7 +105,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
     
     # Check if this is an FAQ/help page
     elif "/faq" in url or "/help" in url or "faq" in title:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: FAQ page")
+        logger.debug("Classified as faq: %s", url)
         return ChunkPlan(
             page_type="faq",
             chunk_style="qa_pairs",
@@ -112,7 +118,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
     # Check if this is a legal/terms page
     elif "/legal" in url or "/terms" in url or "/privacy" in url:
-        print(f"[CHUNK_PLANNER] ✓ Classified as: LEGAL page")
+        logger.debug("Classified as legal: %s", url)
         return ChunkPlan(
             page_type="legal",
             chunk_style="clause_exact",
@@ -125,7 +131,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
     # Default fallback for unclassified pages
     else:
-        print(f"[CHUNK_PLANNER] ⚠ Could not classify page, returning default")
+        logger.debug("Could not classify page, using default: %s", url)
         return ChunkPlan(
             page_type="general",
             chunk_style="thematic",
@@ -138,9 +144,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
         )
 
 
-print(f"[CHUNK_PLANNER] Initializing LLM with model: {os.getenv('OPENROUTER_MODEL')}")
-
-print(f"[CHUNK_PLANNER] Configured structured output for ChunkPlan")
+# Configure LLM for structured output
 llm_chunk_planner = llm.with_structured_output(ChunkPlan)
 
 def llm_planner(record: dict) -> ChunkPlan:
@@ -155,14 +159,12 @@ def llm_planner(record: dict) -> ChunkPlan:
     Returns:
         ChunkPlan optimized for this specific page
     """
-    print(f"[CHUNK_PLANNER] Invoking LLM planner for complex page...")
-
     url = record.get("url", "unknown")
     raw_html = record.get("content", "")[:3000]
     crawled_metadata = record.get("metadata", {})
     ChunkPlan_config = record.get("crawl_config", {})
     
-    print(f"[CHUNK_PLANNER] Sending request to LLM with content sample...")
+    logger.info("Using LLM planner for: %s", url)
     response = llm_chunk_planner.invoke(
         [
             ("system", SYSTEM_PROMPT),
@@ -180,6 +182,7 @@ def llm_planner(record: dict) -> ChunkPlan:
             """)
             ]
     )
+    logger.debug("LLM plan: type=%s style=%s words=%d", response.page_type, response.chunk_style, response.target_chunk_words)
     return response
 
 def create_chunk_plan(record: dict) -> ChunkPlan:
@@ -194,20 +197,20 @@ def create_chunk_plan(record: dict) -> ChunkPlan:
     Returns:
         ChunkPlan ready for use in chunking process
     """
-    print(f"[CHUNK_PLANNER] === CREATING CHUNK PLAN ===")
+    url = record.get("url", "unknown")
     try:
         # Try fast heuristic routing first
         heuristic_router_plan = heuristic_router(record)
         if heuristic_router_plan.page_type != "general":
-            print(f"[CHUNK_PLANNER] ✓ Using heuristic plan for: {record.get('url', 'unknown')}")
+            logger.info("Chunk plan created (heuristic): %s", url)
             return heuristic_router_plan
         else:
             # Fall back to LLM for complex cases
-            print(f"[CHUNK_PLANNER] ⚠ Heuristic inconclusive, using LLM planner for: {record.get('url', 'unknown')}")
+            logger.info("Heuristic inconclusive, using LLM planner: %s", url)
             return llm_planner(record)
     except Exception as e:
-        print(f"[CHUNK_PLANNER] ❌ Chunk planning failed for {record.get('url', 'unknown')}: {e}")
-        print(f"[CHUNK_PLANNER] Using default fallback chunk plan")
+        logger.error("Chunk planning failed for %s", url, exc_info=True)
+        logger.warning("Using default fallback chunk plan")
         return ChunkPlan(
             page_type="general",
             chunk_style="semantic",

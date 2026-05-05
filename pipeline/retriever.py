@@ -11,8 +11,12 @@ from chromadb.api.types import Where
 from chromadb import K, Knn, Rrf, Search
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from utils.logger import get_logger
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
+
+logger = get_logger("RETRIEVER")
 
 # ============================================================
 # QUERY REWRITE
@@ -83,9 +87,13 @@ def build_filter(query) -> dict | None:
     Query:
     {query}
     Return below JSON object with keys as filter names and values as filter values.
+    {
+        {
+            "apply_filter": bool,
+            "filter": dict | None
+        }
+    }
 
-    apply_filter: bool
-    filter : dict | None
 
     """
     filter_extractor = llm.with_structured_output(FilterConfig)
@@ -119,13 +127,9 @@ def remove_duplicates(results: list[dict]) -> list[dict]:
 # RERANKING
 # ============================================================
 
-_rerank_model = None 
-
-print("[RETRIEVER] Loading reranker model...")
-
+# Reranker model - load once at module level
 _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
-
-print("[RETRIEVER] Reranker ready")
+logger.debug("Reranker model loaded")
 
 def rerank(query: str, results: list[dict]) -> list[dict]:
     """
@@ -215,9 +219,24 @@ def hybrid_query(
     where: dict | Where | None = None,
     collection_name: str = "web_docs",
 ):
+    """Execute hybrid search combining dense and sparse embeddings.
+    
+    Args:
+        company_id: Company identifier
+        company_type: Type of company (for config selection)
+        query_dense: Query for dense semantic search
+        query_sparse: Query for sparse keyword search
+        k: Number of results to return
+        where: Optional filter constraints
+        collection_name: Name of the collection to search
+        
+    Returns:
+        Raw search results from the collection
+    """
     try:
         cfg = build_company_config(company_type)
         collection = get_collection(company_id, collection_name, company_type)
+        logger.debug("Searching with k=%d, dense_weight=%.1f", k, cfg["dense_weight"])
 
         rank = Rrf(
             ranks=[
@@ -237,11 +256,12 @@ def hybrid_query(
 
         if where and isinstance(where, dict) and len(where) > 0:
             search = search.where(where)
+            logger.debug("Applied filter: %s", list(where.keys()))
 
         return collection.search(search)
 
     except Exception as e:
-        print("Search failed:", e)
+        logger.error("Hybrid search failed: %s", e, exc_info=True)
         return {"rows": []}
     
 
@@ -251,15 +271,28 @@ def hybrid_query(
 # ============================================================
 
 def retrieve(query: str, company_id: str, company_type: str, k: int = 10):
-    print("=" * 50)
-    print("RETRIEVAL START")
+    """Main retrieval function that orchestrates query rewriting, filtering, hybrid search, reranking, and result formatting.
+    
+    Args:
+        query: User's search query
+        company_id: Company identifier
+        company_type: Type of company (for config selection)
+        k: Number of top results to return
+        
+    Returns:
+        Dictionary with context, sources, chunks, and metadata
+    """
+    logger.info("Retrieval start for: %s (k=%d)", company_id, k)
 
+    # Parallel execution of query rewriting and filter building
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_rewrite = executor.submit(rewrite_query, query)
         future_filter = executor.submit(build_filter, query)
         
         original_query, rewritten = future_rewrite.result()
         filters = future_filter.result()
+
+    logger.debug("Query rewritten: %s", rewritten[:60] if rewritten else rewritten)
 
     # Retrieve a wider pool, rerank narrows it down
     raw_results = hybrid_query(
@@ -272,31 +305,33 @@ def retrieve(query: str, company_id: str, company_type: str, k: int = 10):
     )
 
     parsed = parse_results(raw_results)
-    print("Retrieved:", len(parsed))
+    logger.debug("Retrieved %d results", len(parsed))
 
     unique = remove_duplicates(parsed)
-    print("After dedupe:", len(unique))
+    logger.debug("After deduplication: %d results", len(unique))
 
     if not unique:
+        logger.warning("No results found for query")
         return {"context": "", "sources": [], "chunks": [],
                 "rewritten_query": rewritten, "metadata": []}
 
     # Rerank with the ORIGINAL user query (more faithful to intent)
     try:
         reranked = rerank(original_query, unique)
+        logger.debug("Reranking complete")
     except Exception as e:
-        print(f"Reranking failed: {e}, using unranked results")
+        logger.warning("Reranking failed: %s, using unranked results", e)
         reranked = unique
 
     # Take top-k after reranking, then apply confidence
     top = reranked[:k]
     confident = filter_confidence(top)
     if not confident:
-        print("No results passed confidence threshold, using top 3")
+        logger.debug("No results passed confidence threshold, using top 3")
         confident = top[:3]
 
     context, sources = format_context(confident)
-    print("Final chunks:", len(confident))
+    logger.info("Retrieval complete: %d results, confidence filtered", len(confident))
 
     return {
         "context": context,

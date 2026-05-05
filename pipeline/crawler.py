@@ -4,22 +4,23 @@ This module handles web crawling with intelligent planning using LLM agents.
 It determines the best crawling strategy for a given URL and executes the crawl.
 """
 
-import asyncio
 from datetime import datetime
-import json
 from crawl4ai import AsyncUrlSeeder, AsyncWebCrawler, CrawlerRunConfig, PruningContentFilter,SeedingConfig
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from pydantic import BaseModel, Field
 from llm_model import llm
-import os
+from utils.logger import get_logger
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 
-print("[CRAWLER] Module loaded successfully")
+logger = get_logger("CRAWLER")
 
-# ─── Get total active pages ───────────────────────────────────────────
+# ============================================================
+# PAGE DISCOVERY
+# ============================================================
 
 async def get_total_active_pages(domain_url: str) -> int:
     """Discovers total active pages on a website using sitemap and crawl4ai seeding.
@@ -30,25 +31,21 @@ async def get_total_active_pages(domain_url: str) -> int:
     Returns:
         Integer count of active pages found, or 0 if seeding fails
     """
-    print(f"[CRAWLER] Discovering active pages for: {domain_url}")
+    logger.info("Discovering pages for: %s", domain_url)
     try:
-        print(f"[CRAWLER] Initializing URL seeder with sitemap+cc strategy...")
         config = SeedingConfig(source="sitemap+cc", live_check=True, concurrency=20)
         async with AsyncUrlSeeder() as seeder:
-            print(f"[CRAWLER] Fetching all discovered URLs...")
             discovered_urls = await seeder.urls(domain_url, config)
-            print(f"[CRAWLER] Total discovered URLs: {len(discovered_urls)}")
-            
-            # Filter for only valid/active pages
             active_pages = [url for url in discovered_urls if url.get("status") == "valid"]
-            print(f"[CRAWLER] Active pages found: {len(active_pages)}")
+            logger.info("Found %d active pages for %s", len(active_pages), domain_url)
             return len(active_pages)
     except Exception as e:
-        print(f"[CRAWLER] ❌ URL seeding failed: {e}, returning 0")
+        logger.error("URL seeding failed for %s", domain_url, exc_info=True)
         return 0
-    
-# ─── Agent output schema ───────────────────────────────────────────
 
+# ============================================================
+# CRAWL PLANNING
+# ============================================================
 
 class CrawlPlan_config(BaseModel):
     """Configuration schema for AI-planned crawling strategy.
@@ -61,27 +58,21 @@ class CrawlPlan_config(BaseModel):
     pruning_threshold: float = Field(..., description="Threshold for pruning content. 0.3 to 0.8")
     notes: str = Field(..., description="Any specific instructions for crawling this site")
 
-print(f"[CRAWLER] Using shared LLM instance from llm_model")
 
-
-async def plan_crawl(url:str) -> CrawlPlan_config:
+async def plan_crawl(url: str) -> CrawlPlan_config:
     """
     Agent inspects the URL and decides how to crawl it.
     This is the 'brain' — runs before any crawling starts.
     
     Returns a CrawlPlan_config with optimized crawling parameters.
     """
-    print(f"[CRAWLER] === PLANNING CRAWL STRATEGY ===")
-    print(f"[CRAWLER] Target URL: {url}")
+    logger.info("Planning crawl strategy for: %s", url)
     
-    print(f"[CRAWLER] Configuring LLM for structured output...")
-    structured_llm = llm.with_structured_output(CrawlPlan_config)
-
-    print(f"[CRAWLER] Getting page count to inform strategy...")
-    number_of_pages = await get_total_active_pages(url)
-
-    print(f"[CRAWLER] Invoking LLM agent to create crawl plan...")
-    response = structured_llm.invoke(f"""
+    try:
+        structured_llm = llm.with_structured_output(CrawlPlan_config)
+        number_of_pages = await get_total_active_pages(url)
+        
+        response = structured_llm.invoke(f"""
     Analyze this website URL and create best crawling strategy.
 
     URL: {url}
@@ -105,37 +96,43 @@ async def plan_crawl(url:str) -> CrawlPlan_config:
     - notes (any specific instructions for crawling this site)
 
     Return structured output only.
+
+    {{
+
+    "site_type": str = Field(..., description="One of: docs, ecommerce, blog, support, unknown")
+    "max_depth": int = Field(..., description="How deep to crawl. 1=surface only, 3=deep docs site")
+    "max_pages": int = Field(..., description="Max pages to crawl. Small site=20, large docs=100")
+    "pruning_threshold": float = Field(..., description="Threshold for pruning content. 0.3 to 0.8")
+    "notes": str = Field(..., description="Any specific instructions for crawling this site")
+
+    }}
+
     """)
-    print(f"[CRAWLER] ✓ Agent decision received")
-    print(f"[CRAWLER]   Site Type: {response.site_type}")
-    print(f"[CRAWLER]   Max Depth: {response.max_depth}")
-    print(f"[CRAWLER]   Max Pages: {response.max_pages}")
-    print(f"[CRAWLER]   Pruning Threshold: {response.pruning_threshold}")
-    print(f"[CRAWLER]   Notes: {response.notes}")
-    return response
+        
+        logger.debug("Crawl plan: type=%s depth=%d pages=%d threshold=%.2f", 
+                     response.site_type, response.max_depth, response.max_pages, response.pruning_threshold)
+        return response
+        
+    except Exception as e:
+        logger.error("Crawl planning failed for %s", url, exc_info=True)
+        raise
 
 # ─── Main crawl function ───────────────────────────────────────────
 
 
-async def crawl_url(start_url:str) -> list[dict]:
-
+async def crawl_url(start_url: str) -> list[dict]:
     """
     Crawls a URL using agent-decided configuration.
     Agent runs first, then Crawl4AI executes the strategy.
     
     Returns a list of dictionaries containing crawled page data.
     """
-    print(f"[CRAWLER] === STARTING CRAWL ===")
-    print(f"[CRAWLER] Start URL: {start_url}")
+    logger.info("Starting crawl: %s", start_url)
     
-    # Get crawl strategy from LLM agent
-    print(f"[CRAWLER] Requesting crawl strategy from LLM agent...")
     try:
         plan = await plan_crawl(start_url)
-        print(f"[CRAWLER] ✓ Crawl plan created successfully")
     except Exception as e:
-        print(f"[CRAWLER] ❌ Agent planning failed: {e}")
-        print(f"[CRAWLER] Using fallback configuration...")
+        logger.warning("Crawl planning failed, using fallback: %s", e)
         plan = CrawlPlan_config(
             site_type="default",
             max_depth=2,
@@ -144,22 +141,13 @@ async def crawl_url(start_url:str) -> list[dict]:
             notes="fallback"
         )
 
-    print(f"[CRAWLER] Final crawl plan configured")
-
-    # Configure content pruning filter
-    print(f"[CRAWLER] Setting up content pruning filter (threshold: {plan.pruning_threshold})...")
     prune_filter = PruningContentFilter(
         threshold=plan.pruning_threshold,           
         threshold_type="dynamic",  
         min_word_threshold=50      
     )
-
-    # Configure markdown generation
-    print(f"[CRAWLER] Initializing markdown generator...")
     md_generator = DefaultMarkdownGenerator(content_filter=prune_filter)
 
-    # Configure crawler with BFS deep crawl strategy
-    print(f"[CRAWLER] Creating crawler configuration with BFS strategy...")
     config = CrawlerRunConfig(
         deep_crawl_strategy=BFSDeepCrawlStrategy(
             max_depth=plan.max_depth, 
@@ -171,38 +159,34 @@ async def crawl_url(start_url:str) -> list[dict]:
         markdown_generator=md_generator,
         scan_full_page=True
     )
-    print(f"[CRAWLER] ✓ Crawler configuration ready")
     
     try:
-
         pages = []
-        print(f"[CRAWLER] Initializing AsyncWebCrawler...")
+        logger.debug("Crawler config ready: type=%s depth=%d pages=%d", 
+                     plan.site_type, plan.max_depth, plan.max_pages)
+        
         async with AsyncWebCrawler() as crawler:
-
-            print(f"[CRAWLER] ⏳ Starting crawl execution.....")
-            print(f"[CRAWLER] Max depth: {plan.max_depth}, Max pages: {plan.max_pages}")
-
-            # Execute the crawl
             results = await crawler.arun(start_url, config=config)
-
-            print(f"[CRAWLER] ✓ Crawl complete. Total results: {len(results)}")
-
+            
             count = 0
             failed_count = 0
+            skipped_count = 0
 
-            for result in results:  
-                # Skip pages without successful crawls or markdown content
-                if not result.success or not result.markdown:
+            for result in results:
+                if not result.success:
                     failed_count += 1
                     continue
+                
+                if not result.markdown:
+                    skipped_count += 1
+                    continue
                     
-                # Build page data with content and metadata
                 data = {
                     "url": result.url,
                     "content": result.markdown.fit_markdown,
                     "metadata": result.metadata,
-                    "timestamp":  datetime.now().isoformat(),
-                    "crawl_config" : {
+                    "timestamp": datetime.now().isoformat(),
+                    "crawl_config": {
                         "site_type": plan.site_type,
                         "max_depth": plan.max_depth,
                         "max_pages": plan.max_pages,
@@ -214,15 +198,10 @@ async def crawl_url(start_url:str) -> list[dict]:
                 pages.append(data)
                 count += 1
 
-                if count % 10 == 0 or count == 1:
-                    print(f"[CRAWLER] ✓ Processed {count} pages (Failed: {failed_count})")
-
-        print(f"[CRAWLER] === CRAWL COMPLETE ===")
-        print(f"[CRAWLER] Successfully saved: {count} pages")
-        print(f"[CRAWLER] Failed: {failed_count} pages")
+        logger.info("Crawl complete: %d success, %d failed, %d skipped out of %d results", 
+                    count, failed_count, skipped_count, len(results))
         return pages
 
     except Exception as e:
-        print(f"[CRAWLER] ❌ Error during crawling: {e}")
-        print(f"[CRAWLER] Returning empty list")
+        logger.error("Crawl execution failed for %s", start_url, exc_info=True)
         return []
