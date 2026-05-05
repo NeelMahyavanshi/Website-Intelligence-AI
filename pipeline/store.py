@@ -7,14 +7,13 @@ import chromadb
 import hashlib
 from chromadb import (
     Schema, VectorIndexConfig, SparseVectorIndexConfig,
-    K, Knn, Rrf, Search, FtsIndexConfig,
+    K
 )
 from chromadb.utils.embedding_functions import (
     GoogleGeminiEmbeddingFunction,
     ChromaCloudSpladeEmbeddingFunction,
 )
 import re
-from chromadb.api.types import Where
 from dotenv import load_dotenv
 from pipeline.crawler import crawl_url
 from pipeline.chunker import process_record
@@ -163,7 +162,7 @@ def get_collection(
 
         _collection_cache[cache_key] = collection
         
-    return collection
+    return _collection_cache[cache_key]
 
 # ============================================================
 # SAFE UPSERT
@@ -261,6 +260,13 @@ async def ingest(
 
             chunks = process_record(page)
 
+            for c in chunks:
+                c.setdefault("metadata", {})
+                c["metadata"]["content_hash"] = h
+                # also useful for dedup/filtering later:
+                c["metadata"].setdefault("source_url", page.get("url"))
+
+
             all_chunks.extend(chunks)
 
             print("Processed:", page["url"])
@@ -289,72 +295,3 @@ async def ingest(
     print("INGEST COMPLETE")
 
     return len(all_chunks)
-
-
-# ============================================================
-# BASIC HYBRID SEARCH
-# ============================================================
-
-def hybrid_query(
-    company_id: str,
-    company_type: str,
-    query: str,
-    k: int = 5,
-    where: dict | Where | None = None,
-    collection_name: str = "web_docs"
-):
-
-    try:
-
-        cfg = build_company_config(company_type)
-
-        collection = get_collection(
-            company_id,
-            collection_name,
-            company_type
-        )
-
-        rank = Rrf(
-            ranks=[
-
-                Knn(
-                    query=query,
-                    return_rank=True
-                ),
-
-                Knn(
-                    query=query,
-                    key="sparse_embedding",
-                    return_rank=True
-                )
-            ],
-
-            weights=[
-                cfg["dense_weight"],
-                cfg["sparse_weight"]
-            ],
-
-            normalize=True
-        )
-
-        search = (
-            Search()
-            .rank(rank)
-            .limit(k)
-            .select(
-                K.DOCUMENT,
-                K.SCORE,
-                K.METADATA
-            )
-        )
-
-        if where is not None: 
-            search = search.where(where)
-
-        results = collection.search(search)
-
-        return results
-
-    except Exception as e:
-        print("Search failed:", e)
-        return []
