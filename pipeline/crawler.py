@@ -4,15 +4,19 @@ This module handles web crawling with intelligent planning using LLM agents.
 It determines the best crawling strategy for a given URL and executes the crawl.
 """
 
-from datetime import datetime
-from crawl4ai import AsyncUrlSeeder, AsyncWebCrawler, CrawlerRunConfig, PruningContentFilter,SeedingConfig
+from crawl4ai import AsyncUrlSeeder, AsyncWebCrawler, CrawlerRunConfig, PruningContentFilter,SeedingConfig, CacheMode
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from utils.logger import get_logger
 from pydantic import BaseModel, Field
 from llm_model import llm
-from utils.logger import get_logger
 from dotenv import load_dotenv
+from datetime import datetime
+from typing import AsyncGenerator
+from utils.helpers import extract_company_id
+import json
+from pathlib import Path
 
 load_dotenv(override=True)
 
@@ -117,15 +121,18 @@ async def plan_crawl(url: str) -> CrawlPlan_config:
         logger.error("Crawl planning failed for %s", url, exc_info=True)
         raise
 
-# ─── Main crawl function ───────────────────────────────────────────
+    
+    
+# ============================================================
+# CRAWL EXECUTION
+# ============================================================
 
-
-async def crawl_url(start_url: str) -> list[dict]:
+async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
     """
     Crawls a URL using agent-decided configuration.
     Agent runs first, then Crawl4AI executes the strategy.
     
-    Returns a list of dictionaries containing crawled page data.
+    Returns an async generator yielding dictionaries containing crawled page data.
     """
     logger.info("Starting crawl: %s", start_url)
     
@@ -141,6 +148,34 @@ async def crawl_url(start_url: str) -> list[dict]:
             notes="fallback"
         )
 
+    # ── Checkpoint paths ──────────────────────────────
+    checkpoint_dir = Path(".checkpoints")
+    checkpoint_dir.mkdir(exist_ok=True)
+
+    company_id = extract_company_id(start_url)
+    checkpoint_file = checkpoint_dir / f"{company_id}.json"
+
+    # Load existing state if resuming
+    resume_state = None
+    if checkpoint_file.exists():
+        resume_state = json.loads(checkpoint_file.read_text())
+        logger.info("Resuming from checkpoint: %d pages already crawled",
+                    resume_state.get("pages_crawled", 0))
+    
+    # Save state after every URL
+    async def save_checkpoint(state: dict):
+        checkpoint_file.write_text(json.dumps(state))
+        logger.debug("Checkpoint saved: %s", checkpoint_file)
+
+    # ── Build strategy with crash recovery ────────────
+    strategy = BFSDeepCrawlStrategy(
+        max_depth=plan.max_depth,
+        include_external=False,
+        max_pages=plan.max_pages,
+        resume_state=resume_state,
+        on_state_change=save_checkpoint
+    )
+
     prune_filter = PruningContentFilter(
         threshold=plan.pruning_threshold,           
         threshold_type="dynamic",  
@@ -149,39 +184,36 @@ async def crawl_url(start_url: str) -> list[dict]:
     md_generator = DefaultMarkdownGenerator(content_filter=prune_filter)
 
     config = CrawlerRunConfig(
-        deep_crawl_strategy=BFSDeepCrawlStrategy(
-            max_depth=plan.max_depth, 
-            include_external=False,
-            max_pages=plan.max_pages
-        ),
+        deep_crawl_strategy=strategy,
         scraping_strategy=LXMLWebScrapingStrategy(),
+        cache_mode=CacheMode.BYPASS,
         verbose=False,
         markdown_generator=md_generator,
-        scan_full_page=True
+        scan_full_page=True,
+        stream=True  
     )
     
+    count = 0
+    failed_count = 0
+
     try:
-        pages = []
+        
         logger.debug("Crawler config ready: type=%s depth=%d pages=%d", 
                      plan.site_type, plan.max_depth, plan.max_pages)
         
         async with AsyncWebCrawler() as crawler:
-            results = await crawler.arun(start_url, config=config)
-            
-            count = 0
-            failed_count = 0
-            skipped_count = 0
 
-            for result in results:
-                if not result.success:
+            skipped_count = 0
+            
+            async for result in await crawler.arun(start_url, config=config):
+
+                if not result.success or not result.markdown:
+                    logger.warning("Crawl failed for %s: %s", result.url, result.error_message)
                     failed_count += 1
                     continue
-                
-                if not result.markdown:
-                    skipped_count += 1
-                    continue
-                    
-                data = {
+
+
+                yield ({
                     "url": result.url,
                     "content": result.markdown.fit_markdown,
                     "metadata": result.metadata,
@@ -193,15 +225,20 @@ async def crawl_url(start_url: str) -> list[dict]:
                         "pruning_threshold": plan.pruning_threshold,
                         "notes": plan.notes
                     }
-                }
-                
-                pages.append(data)
+                })
                 count += 1
+                
+                logger.info("Progress: %d success, %d failed, %d skipped", 
+                count, failed_count, skipped_count)
+        
+        # Clear checkpoint on successful completion
+        if checkpoint_file.exists():
+            checkpoint_file.unlink()
+            logger.info("Checkpoint cleared after successful crawl")
 
-        logger.info("Crawl complete: %d success, %d failed, %d skipped out of %d results", 
-                    count, failed_count, skipped_count, len(results))
-        return pages
+        logger.info("Crawl complete: %d success, %d failed, %d skipped, total=%d", 
+            count, failed_count, skipped_count, count)
 
     except Exception as e:
-        logger.error("Crawl execution failed for %s", start_url, exc_info=True)
-        return []
+        logger.error("Crawl execution failed", exc_info=True)
+        raise e

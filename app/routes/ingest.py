@@ -1,13 +1,11 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from pipeline.store import ingest
+from pipeline.ingest_pipeline import run_ingest
 
 router = APIRouter()
 
 class IngestRequest(BaseModel):
     url: str
-    company_id: str
-    company_type: str
 
 @router.post("/")
 async def ingest_endpoint(request: IngestRequest):
@@ -16,7 +14,7 @@ async def ingest_endpoint(request: IngestRequest):
     and stores it in the vector database for later retrieval.
     """
     try:
-        count = await ingest(request.url, request.company_id, request.company_type)
-        return {"status": "success", "chunks_ingested": count}
+        result = await run_ingest(request.url)
+        return result
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e)}   

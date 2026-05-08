@@ -26,7 +26,7 @@ class ChunkPlan(BaseModel):
     Defines how a page should be split into chunks based on its content type.
     """
     page_type: Literal["docs", "product", "blog", "support", "faq", "pricing", "legal", "general"] = Field(..., description="Type of page: docs, product, ecommerce, blog, support, faq, pricing, legal, general")
-    chunk_style: Literal["section_based", "semantic_flow", "feature_spec","qa_pairs","pricing_blocks","clause_exact", "thematic"] = Field(..., description="Preferred chunking style: 'thematic', 'section-based', 'semantic'")
+    chunk_style: Literal["section_based", "semantic_flow", "feature_spec","qa_pairs","pricing_blocks","clause_exact", "thematic", "semantic"] = Field(..., description="Preferred chunking style: 'thematic', 'section-based', 'semantic'")
     target_chunk_words: int = Field(...,ge=180, le=800, description="Ideal number of words per chunk, e.g. 300, between 180 - 800")
     preserve_code_blocks: bool = Field(..., description="Whether to preserve code blocks in the chunks")
     preserve_tables: bool = Field(..., description="Whether to preserve tables in the chunks")

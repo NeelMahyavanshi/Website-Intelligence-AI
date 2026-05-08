@@ -4,7 +4,7 @@
 import os
 from typing import Any
 import chromadb
-import hashlib
+from utils.helpers import page_hash
 from chromadb import (
     Schema, VectorIndexConfig, SparseVectorIndexConfig,
     K
@@ -78,13 +78,9 @@ def build_company_config(company_type: str) -> dict:
 # ============================================================
 
 
-def page_hash(content: str) -> str:
-    """Computes MD5 hash of page content for deduplication."""
-    return hashlib.md5(content.encode()).hexdigest()
-
 def chunk_id(url: str, text: str) -> str:
     """Generates a unique chunk ID from URL and text hash."""
-    h = hashlib.md5(text.encode()).hexdigest()
+    h = page_hash(text)
     return f"{url}#{h}"
 
 def flatten_meta(meta: dict) -> dict:

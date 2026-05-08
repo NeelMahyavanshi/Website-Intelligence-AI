@@ -19,7 +19,7 @@ load_dotenv(override=True)
 logger = get_logger("RETRIEVER")
 
 # ============================================================
-# QUERY REWRITE
+# QUERY REWRITING
 # ============================================================
 
 
@@ -102,7 +102,7 @@ def build_filter(query) -> dict | None:
 
 
 # ============================================================
-# HYBRID QUERY
+# DEDUPLICATION
 # ============================================================
 
 def remove_duplicates(results: list[dict]) -> list[dict]:
@@ -158,7 +158,7 @@ def filter_confidence(results: list[dict], threshold: float = 0.02) -> list[dict
 
 
 # ============================================================
-# CONTEXT FORMATTING
+# RESULT FORMATTING
 # ============================================================
 
 def format_context(results: list[dict]) -> tuple[str, list[str]]:
@@ -207,7 +207,7 @@ def parse_results(raw) -> list[dict]:
 
 
 # ============================================================
-# BASIC HYBRID SEARCH
+# HYBRID SEARCH
 # ============================================================
 
 def hybrid_query(
@@ -267,7 +267,7 @@ def hybrid_query(
 
 
 # ============================================================
-# MAIN RETRIEVAL FUNCTION
+# RETRIEVAL ORCHESTRATION
 # ============================================================
 
 def retrieve(query: str, company_id: str, company_type: str, k: int = 10):
