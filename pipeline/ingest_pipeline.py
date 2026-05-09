@@ -9,7 +9,7 @@ from utils.helpers import extract_company_id
 from utils.database import db
 from utils.helpers import page_hash
 from utils.logger import get_logger
-
+from pipeline.embedder import run_embedding
 
 logger = get_logger("INGEST_PIPELINE")
 
@@ -91,11 +91,16 @@ async def run_crawl(start_url: str) -> str:
     logger.info("Ingest job created with ID: %s", job_id)
 
     # Step 2: Start crawling
+
+    company_type = "default"
+
     async for page in crawl_url(start_url):
 
         # For each page: hash check → save to crawled_pages
 
         save_result = save_pages_to_db(page, job_id)
+
+        company_type = page["crawl_config"].get("site_type", "default")
 
         if save_result == "error":
             logger.error("Error saving page to DB, skipping chunking: %s", page.get("url", "unknown"))
@@ -110,7 +115,8 @@ async def run_crawl(start_url: str) -> str:
         .update({
             "status": "completed",
             "pages_crawled": pages_crawled,
-            "chunks_created": chunks_created
+            "chunks_created": chunks_created,
+            "company_type": company_type
         })\
         .eq("id", job_id)\
         .execute()
@@ -118,6 +124,7 @@ async def run_crawl(start_url: str) -> str:
     return {
         "job_id": job_id,
         "company_id": extract_company_id(start_url),
+        "company_type": company_type,
         "status": "completed",
         "pages_crawled": pages_crawled,
         "chunks_created": chunks_created
@@ -126,9 +133,11 @@ async def run_crawl(start_url: str) -> str:
 # ============================================================
 #  RUN CHUNKING
 # ============================================================
-async def run_chunking(company_id: str) -> dict:
+async def run_chunking(url: str) -> dict:
     """Runs the chunking process for all pages of a completed crawl job."""
         
+    company_id = extract_company_id(url)
+
     # Get all pages with status "chunking_pending" and "company_id" for this job_id
     pages_to_chunk = db.table("crawled_pages")\
         .select("*")\
@@ -155,7 +164,8 @@ async def run_chunking(company_id: str) -> dict:
                     "company_id": extract_company_id(page.get("url", "unknown")),
                     "text": chunk.get("text", ""),
                     "metadata": chunk.get("metadata", {}),
-                    "status": "ready_for_embedding"
+                    "status": "ready_for_embedding",
+                    "company_type": page["crawl_config"].get("site_type", "default")
                 }
                 db.table("chunks").insert(chunk_record).execute()
             logger.info("Chunks saved to DB for page: %s, chunks_count=%d", page.get("url", "unknown"), len(chunks))
@@ -164,10 +174,10 @@ async def run_chunking(company_id: str) -> dict:
             logger.error("Error processing page for chunking: %s", page.get("url", "unknown"), exc_info=True)
             continue
 
-    db.table("crawled_pages")\
-        .update({"status": "chunked"})\
-        .eq("id", page.get("id"))\
-        .execute()
+        db.table("crawled_pages")\
+            .update({"status": "chunked"})\
+            .eq("id", page.get("id"))\
+            .execute()
     
     logger.info("Chunking completed for company ID: %s, total chunks created: %d", company_id, chunks_created)
 
@@ -194,9 +204,12 @@ async def run_ingest(url: str) -> dict:
 
         results = await run_crawl(url)
         company_id = results.get("company_id", "Unknown")
-        chunks = await run_chunking(company_id)
+        chunks = await run_chunking(url)
+        embedding = await run_embedding(url)
         return {
             "company_id": company_id,
+            "company_type": results.get("company_type", "default"),
+            "chunks_embedded": embedding.get("chunks_embedded"),
             "pages_crawled": results.get("pages_crawled"),
             "chunks_created": chunks.get("chunks_created"),
             "status": "completed"
