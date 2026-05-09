@@ -7,7 +7,6 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str
     url:str
-    company_type: str
 
 @router.post("/")
 async def query_endpoint(request: QueryRequest):
@@ -23,7 +22,7 @@ async def query_endpoint(request: QueryRequest):
         loop = asyncio.get_event_loop()
         company_id = extract_company_id(request.url)
         retrieval = await loop.run_in_executor(
-            None, retrieve, request.query, company_id, request.company_type
+            None, retrieve, request.query, company_id
         )
         generation = await loop.run_in_executor(
             None, generate, request.query, retrieval

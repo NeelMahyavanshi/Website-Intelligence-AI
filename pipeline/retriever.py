@@ -9,7 +9,7 @@ from sentence_transformers import CrossEncoder
 import hashlib
 from chromadb.api.types import Where
 from chromadb import K, Knn, Rrf, Search
-import asyncio
+from utils.database import db
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
 from dotenv import load_dotenv
@@ -270,7 +270,7 @@ def hybrid_query(
 # RETRIEVAL ORCHESTRATION
 # ============================================================
 
-def retrieve(query: str, company_id: str, company_type: str, k: int = 10):
+def retrieve(query: str, company_id: str, k: int = 10):
     """Main retrieval function that orchestrates query rewriting, filtering, hybrid search, reranking, and result formatting.
     
     Args:
@@ -283,7 +283,15 @@ def retrieve(query: str, company_id: str, company_type: str, k: int = 10):
         Dictionary with context, sources, chunks, and metadata
     """
     logger.info("Retrieval start for: %s (k=%d)", company_id, k)
-
+    
+    job = db.table("ingest_jobs")\
+        .select("company_type")\
+        .eq("company_id", company_id)\
+        .order("created_at", desc=True)\
+        .limit(1)\
+        .execute()
+    
+    company_type = job.data[0]["company_type"] if job.data else "default"
     # Parallel execution of query rewriting and filter building
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_rewrite = executor.submit(rewrite_query, query)

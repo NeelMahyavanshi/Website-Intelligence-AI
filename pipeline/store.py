@@ -15,8 +15,6 @@ from chromadb.utils.embedding_functions import (
 )
 import re
 from dotenv import load_dotenv
-from pipeline.crawler import crawl_url
-from pipeline.chunker import process_record
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger import get_logger
 
