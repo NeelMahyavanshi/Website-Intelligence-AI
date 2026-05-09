@@ -15,6 +15,33 @@ logger = get_logger("INGEST_PIPELINE")
 
 
 # ============================================================
+# CREATE INJEST JOB_ID
+# ============================================================
+
+def create_ingest_job(start_url:str) -> str:
+
+    """Creates a new ingest job record in the database and returns the job ID."""
+
+    logger.info("Creating ingest job for URL: %s", start_url)
+
+    response = db.table("ingest_jobs")\
+        .insert({
+            "company_id": extract_company_id(start_url),
+            "start_url": start_url,
+            "status": "in_progress"
+        })\
+        .execute()
+    
+    job_id = response.data[0]["id"]
+
+    logger.info("Ingest job created with ID: %s", job_id)
+
+    return {
+        "job_id" : job_id
+    }
+
+
+# ============================================================
 # SAVE_PAGES_TO_DB
 # ============================================================
 
@@ -63,7 +90,7 @@ def save_pages_to_db(page: dict, job_id: str) -> str:
 #  RUN CRAWL
 # ============================================================
 
-async def run_crawl(start_url: str) -> str:
+async def run_crawl(start_url: str, job_id: str) -> str:
     """Main function to run the ingest pipeline.
     
     Steps:
@@ -79,18 +106,9 @@ async def run_crawl(start_url: str) -> str:
     pages_crawled = 0
     chunks_created = 0
 
-    response = db.table("ingest_jobs")\
-        .insert({
-            "company_id": extract_company_id(start_url),
-            "start_url": start_url,
-            "status": "in_progress"
-        })\
-        .execute()
-    
-    job_id = response.data[0]["id"]
-    logger.info("Ingest job created with ID: %s", job_id)
+    logger.info("Starting ingest pipeline for URL: %s", start_url)
 
-    # Step 2: Start crawling
+    # Step 1: Start crawling
 
     company_type = "default"
 
@@ -192,17 +210,18 @@ async def run_chunking(url: str) -> dict:
 # RUN INGEST
 # ============================================================
 
-async def run_ingest(url: str) -> dict:
+async def run_ingest(url: str, job_id: str) -> dict:
     """Main entry point for the ingest pipeline.
     
     Args:
-        url: The starting URL to crawl and ingest  
+        url: The starting URL to crawl and ingest
+        job_id: The ID of the ingest job created for this URL
     Returns:
         A dictionary containing the ingest job ID and status    
     """
     try:
 
-        results = await run_crawl(url)
+        results = await run_crawl(url, job_id)
         company_id = results.get("company_id", "Unknown")
         chunks = await run_chunking(url)
         embedding = await run_embedding(url)
