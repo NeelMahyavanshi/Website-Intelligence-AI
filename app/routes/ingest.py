@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from pipeline.ingest_pipeline import run_ingest
 from utils.database import db
@@ -22,11 +22,11 @@ async def ingest_endpoint(request: IngestRequest, background_tasks : BackgroundT
         background_tasks.add_task(run_ingest, request.url, job_id)
         return {"status": "started", "message": "Ingestion started in background", "job_id" : job_id}
     except Exception as e:
-        return {"status": "error", "message": str(e)}   
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/{job_id}")
 async def ingest_status(job_id:str):
     job = db.table("ingest_jobs").select("*").eq("id", job_id).execute()
     if not job.data:
-        return {"status": "not_found"}
+        raise HTTPException(status_code=404, detail="Job not found")
     return job.data[0]
