@@ -13,6 +13,7 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str
     url:str
+    messages: list[dict] | None = None
 
 @router.post("/")
 async def query_endpoint(request: QueryRequest):
@@ -30,7 +31,7 @@ async def query_endpoint(request: QueryRequest):
             None, retrieve, request.query, company_id
         )
         generation = await loop.run_in_executor(
-            None, generate, request.query, retrieval
+            None, generate, request.query, request.messages, retrieval
         )
         return generation
     except Exception as e:

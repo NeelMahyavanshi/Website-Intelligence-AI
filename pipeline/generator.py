@@ -33,7 +33,8 @@ def has_sufficient_context(context: str) -> bool:
 # PROMPT BUILDING
 # ============================================================
 
-def build_prompt(query: str, context: str) -> str:
+
+def build_prompt(query: str, messages:list[dict], context: str) -> list:
     """Builds the LLM prompt for answer generation.
     
     Combines the user query with retrieved context and safety instructions
@@ -44,28 +45,30 @@ def build_prompt(query: str, context: str) -> str:
         context: Retrieved context from the knowledge base
         
     Returns:
-        Complete prompt string ready for LLM invocation
+        [
+        ("system", "You are an assistant..."),
+        ("user", "previous user message"),
+        ("assistant", "previous assistant answer"),
+        ("user", f"latest question with context: {context}"),
+    ]
     """
-    prompt = f"""
-        You are an assistant that answers questions based on the following retrieved context from a company's website. 
-        Use ONLY the information in the context to answer the question. If you don't know the answer, say you don't know. 
-        Do NOT make up answers.
+    messages = "messages" or []
 
-        Context:
-        {context}
+    prompt = [
+        ("system", "You are an assistant that answers questions based on the following retrieved context from a company's website. Use ONLY the information in the context to answer the question. If you don't know the answer, say you don't know. Do NOT make up answers."),
+    ]
+    for message in messages:
+        prompt.append((message["role"], message["content"]))
 
-        OriginalQuestion: {query}
+    prompt.append(("user", query + "\n\nContext:\n" + context))
 
-        Using ONLY the above context, provide a concise and accurate answer to the question. If the context does not contain the answer, respond with "Sorry, I don't have enough information to answer that question."
-
-    """
     return prompt
 
 # ============================================================
 # ANSWER GENERATION
 # ============================================================
 
-def generate(query: str, retrieval_result: dict) -> dict:
+def generate(query: str, messages: list[dict] | None, retrieval_result: dict) -> dict:
     """Generates an answer to the user query based on retrieved context.
     
     Steps: 
@@ -76,8 +79,8 @@ def generate(query: str, retrieval_result: dict) -> dict:
     
     Args:
         query: User's original question
-        retrieval_result: Dictionary containing retrieved context and sources
-        
+        messages: List of previous messages in the conversation
+        retrieval_result: Dictionary containing retrieved context and sources        
     Returns:
         Dictionary with has_answer, answer, sources, and metadata
     """
@@ -92,13 +95,12 @@ def generate(query: str, retrieval_result: dict) -> dict:
         }
     
     logger.debug("Sufficient context available, building prompt")
-    prompt = build_prompt(query, context)
+    prompt = build_prompt(query, messages,context)
     
     try:
         logger.debug("Invoking LLM for answer generation")
         response = llm.invoke(prompt)
         answer = response.content if isinstance(response.content, str) else response.content[0].get("text", "")
-        print(answer)
         logger.info("Answer generated successfully")
     except Exception as e:
         logger.error("Generation failed: %s", e, exc_info=True)
