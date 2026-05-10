@@ -9,10 +9,8 @@ llm = ChatOpenAI(
     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
     openai_api_base=os.getenv("OPENROUTER_BASE_URL"),
     temperature=0,
-    model_kwargs={
-        "reasoning": {
-            "effort": "none"
-        }
+    extra_body={
+        "reasoning": {"effort": "none"}
     }
 )
 

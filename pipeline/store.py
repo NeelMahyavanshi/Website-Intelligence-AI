@@ -17,6 +17,8 @@ import re
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger import get_logger
+import warnings
+warnings.filterwarnings("ignore", message=".*GOOGLE_API_KEY.*")
 
 load_dotenv(override=True)
 

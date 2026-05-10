@@ -42,6 +42,7 @@ def rewrite_query(user_query:str) -> str:
         - DO NOT list keywords
         - DO NOT use "|" or commas
         - output ONE natural sentence
+        - For example, "How do I reset my password?" might be rewritten to "password reset instructions"
 
         Query: {user_query}
 
@@ -85,14 +86,14 @@ def build_filter(query) -> dict | None:
     Extract structured filters from this search query if present. 
     If no filters are needed, return an empty object.        
     Query:
-    {query}
+    {{query}}
     Return below JSON object with keys as filter names and values as filter values.
-    {
-        {
+    {{
+        {{
             "apply_filter": bool,
             "filter": dict | None
-        }
-    }
+        }}
+    }}
 
 
     """
@@ -215,7 +216,7 @@ def hybrid_query(
     company_type: str,
     query_dense: str,
     query_sparse: str,
-    k: int = 5,
+    k: int = 15,
     where: dict | Where | None = None,
     collection_name: str = "web_docs",
 ):
@@ -270,7 +271,7 @@ def hybrid_query(
 # RETRIEVAL ORCHESTRATION
 # ============================================================
 
-def retrieve(query: str, company_id: str, k: int = 10):
+def retrieve(query: str, company_id: str, k: int = 15):
     """Main retrieval function that orchestrates query rewriting, filtering, hybrid search, reranking, and result formatting.
     
     Args:

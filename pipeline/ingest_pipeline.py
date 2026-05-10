@@ -131,9 +131,8 @@ async def run_crawl(start_url: str, job_id: str) -> str:
 
     db.table("ingest_jobs")\
         .update({
-            "status": "completed",
+            "status": "in_progress",
             "pages_crawled": pages_crawled,
-            "chunks_created": chunks_created,
             "company_type": company_type
         })\
         .eq("id", job_id)\
@@ -143,7 +142,7 @@ async def run_crawl(start_url: str, job_id: str) -> str:
         "job_id": job_id,
         "company_id": extract_company_id(start_url),
         "company_type": company_type,
-        "status": "completed",
+        "status": "crawl_done",
         "pages_crawled": pages_crawled,
         "chunks_created": chunks_created
     }
@@ -225,6 +224,14 @@ async def run_ingest(url: str, job_id: str) -> dict:
         company_id = results.get("company_id", "Unknown")
         chunks = await run_chunking(url)
         embedding = await run_embedding(url)
+        db.table("ingest_jobs")\
+            .update({
+                "status": "completed",
+                "pages_crawled": results.get("pages_crawled", 0),
+                "chunks_created": chunks.get("chunks_created", 0),
+            })\
+            .eq("id", job_id)\
+            .execute()
         return {
             "company_id": company_id,
             "company_type": results.get("company_type", "default"),
@@ -234,6 +241,10 @@ async def run_ingest(url: str, job_id: str) -> dict:
             "status": "completed"
         }
     except Exception as e:
+        db.table("ingest_jobs")\
+            .update({"status": "failed"})\
+            .eq("id", job_id)\
+            .execute()
         logger.error("Ingest pipeline failed for URL: %s", url, exc_info=True)
         return {"status": "error", "message": str(e)}
     

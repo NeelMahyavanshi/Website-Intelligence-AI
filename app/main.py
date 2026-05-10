@@ -1,10 +1,18 @@
 from fastapi import FastAPI
 from app.routes import health, ingest, query, companies
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Website Intelligence API",
     description="API for ingesting website data and querying it using LLMs.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(health.router, prefix="/health", tags=["Health"])

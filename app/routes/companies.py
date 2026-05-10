@@ -49,21 +49,21 @@ async def companies_delete(company_id: str):
     
     logger.info("Deleting data for company: %s", company_id)
 
+    db.table("chunks").delete().eq("company_id", company_id).execute()
+    db.table("crawled_pages").delete().eq("company_id", company_id).execute()
+    db.table("ingest_jobs").delete().eq("company_id", company_id).execute()
+    logger.info("Deleted company data from DB for company: %s", company_id)
+
+    # Delete collection from vector DB
+    full_collection_name = f"{_safe_id(company_id)}_web_docs"
+    client = chromadb.CloudClient(
+        tenant=os.getenv("CHROMADB_TENANT"),
+        database="main",
+        api_key=os.getenv("CHROMADB_API_KEY"),
+    )
+
     try:
 
-        # Delete records from DB tables
-        db.table("chunks").delete().eq("company_id", company_id).execute()
-        db.table("crawled_pages").delete().eq("company_id", company_id).execute()
-        db.table("ingest_jobs").delete().eq("company_id", company_id).execute()
-        logger.info("Deleted company data from DB for company: %s", company_id)
-
-        # Delete collection from vector DB
-        full_collection_name = f"{_safe_id(company_id)}_web_docs"
-        client = chromadb.CloudClient(
-            tenant=os.getenv("CHROMADB_TENANT"),
-            database="main",
-            api_key=os.getenv("CHROMADB_API_KEY"),
-        )
         client.delete_collection(full_collection_name)
         logger.info("Deleted collection from vector DB: %s", full_collection_name)
 
@@ -73,9 +73,9 @@ async def companies_delete(company_id: str):
         return {"status": "success", "message": f"Deleted all data for company {company_id}"}
 
     except Exception as e:
-        logger.error("Error occurred while deleting company data from DB for company: %s", company_id)
-        logger.error("Error details: %s", str(e), exc_info=True)
-        return {"status": "error", "message": str(e)}
+        logger.warning("ChromaDB collection not found or already deleted: %s", full_collection_name)
+        _collection_cache.pop(f"{company_id}_web_docs", None)
+        return {"status": "success", "message": f"DB data deleted for {company_id}. ChromaDB collection may not have existed."}
     
     
 

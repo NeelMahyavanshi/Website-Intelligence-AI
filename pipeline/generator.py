@@ -96,7 +96,9 @@ def generate(query: str, retrieval_result: dict) -> dict:
     
     try:
         logger.debug("Invoking LLM for answer generation")
-        answer = llm.invoke(prompt).content
+        response = llm.invoke(prompt)
+        answer = response.content if isinstance(response.content, str) else response.content[0].get("text", "")
+        print(answer)
         logger.info("Answer generated successfully")
     except Exception as e:
         logger.error("Generation failed: %s", e, exc_info=True)
