@@ -52,4 +52,4 @@ logs/
 .checkpoints/
 
 # Model cache
-.cache/
+.cache/frontend/node_modules/
