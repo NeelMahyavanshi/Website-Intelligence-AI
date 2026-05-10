@@ -57,7 +57,10 @@ async def run_embedding(url: str) -> dict:
             logger.error("Error occurred while processing chunk ID: %s", embed.get("id"))
             logger.error("Error details: %s", str(e), exc_info=True)
             continue
-
+    
+    if embedded == 0:
+        logger.warning("No chunks were embedded for company ID: %s", company_id)
+        return {"status": "error", "message": "No chunks were embedded for this company"}
 
     logger.info("Embedding completed for company ID: %s, total chunks embedded: %d", company_id, embedded)
 

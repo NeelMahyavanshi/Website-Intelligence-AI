@@ -133,8 +133,10 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     - For example, you could use an LLM to score the relevance of each result to the query and sort them accordingly.
     - This can help improve the quality of the top results returned to the user.
     """
-    _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
-    logger.debug("Reranker model loaded")
+    global _rerank_model
+    if not _rerank_model:
+        _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
+        logger.debug("Reranker model loaded")
     scores = _rerank_model.predict([(query, r["text"]) for r in results])
     for r, score in zip(results, scores):
         r["rerank_score"] = float(score)
