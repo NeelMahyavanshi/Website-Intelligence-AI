@@ -86,16 +86,12 @@ def build_filter(query) -> dict | None:
     Extract structured filters from this search query if present. 
     If no filters are needed, return an empty object.        
     Query:
-    {{query}}
+    {query}
     Return below JSON object with keys as filter names and values as filter values.
     {{
-        {{
-            "apply_filter": bool,
-            "filter": dict | None
-        }}
+    "apply_filter": bool,
+    "filter": dict | None
     }}
-
-
     """
     filter_extractor = llm.with_structured_output(FilterConfig)
     response = filter_extractor.invoke(prompt)
@@ -128,9 +124,8 @@ def remove_duplicates(results: list[dict]) -> list[dict]:
 # RERANKING
 # ============================================================
 
-# Reranker model - load once at module level
-_rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
-logger.debug("Reranker model loaded")
+# Global reranker model instance to avoid reloading on every call
+_rerank_model = None
 
 def rerank(query: str, results: list[dict]) -> list[dict]:
     """
@@ -138,7 +133,8 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     - For example, you could use an LLM to score the relevance of each result to the query and sort them accordingly.
     - This can help improve the quality of the top results returned to the user.
     """
-
+    _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
+    logger.debug("Reranker model loaded")
     scores = _rerank_model.predict([(query, r["text"]) for r in results])
     for r, score in zip(results, scores):
         r["rerank_score"] = float(score)

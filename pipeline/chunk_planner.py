@@ -31,7 +31,7 @@ class ChunkPlan(BaseModel):
     preserve_code_blocks: bool = Field(..., description="Whether to preserve code blocks in the chunks")
     preserve_tables: bool = Field(..., description="Whether to preserve tables in the chunks")
     merge_short_sections: bool = Field(..., description="Whether to merge very short sections into adjacent chunks")
-    metadata_focus: List[str] = Field(..., description="Which metadata fields to prioritize, e.g. ['page_title', 'section_title']"),
+    metadata_focus: List[str] = Field(..., description="Which metadata fields to prioritize, e.g. ['page_title', 'section_title']")
     notes: str = Field("",description="Any specific instructions for chunking this page")
 
 def heuristic_router(record: dict) -> ChunkPlan:

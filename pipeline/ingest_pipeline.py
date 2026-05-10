@@ -68,6 +68,7 @@ def save_pages_to_db(page: dict, job_id: str) -> str:
         content_hash_list = (
             db.table("crawled_pages")
             .select("content_hash")
+            .eq("company_id", page_record["company_id"])
             .eq("content_hash", page_record["content_hash"])
             .execute()
         )
@@ -223,7 +224,25 @@ async def run_ingest(url: str, job_id: str) -> dict:
         results = await run_crawl(url, job_id)
         company_id = results.get("company_id", "Unknown")
         chunks = await run_chunking(url)
+
+        if chunks.get("status") == "error":
+            db.table("ingest_jobs")\
+                .update({"status": "chunking_failed"})\
+                .eq("id", job_id)\
+                .execute()
+            logger.error("Chunking failed for company ID: %s", company_id)
+            return {"status": "error", "message": "Chunking failed for this company"}
+        
         embedding = await run_embedding(url)
+
+        if embedding.get("status") == "error":
+            db.table("ingest_jobs")\
+                .update({"status": "embedding_failed"})\
+                .eq("id", job_id)\
+                .execute()
+            logger.error("Embedding failed for company ID: %s", company_id)
+            return {"status": "error", "message": "Embedding failed for this company"}
+        
         db.table("ingest_jobs")\
             .update({
                 "status": "completed",
