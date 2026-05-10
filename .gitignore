@@ -43,3 +43,13 @@ Thumbs.db
 
 # Data
 crawled_data.jsonl
+
+# Logs
+logs/
+*.log
+
+# Crawl checkpoints
+.checkpoints/
+
+# Model cache
+.cache/
