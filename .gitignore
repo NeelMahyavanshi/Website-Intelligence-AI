@@ -53,3 +53,6 @@ logs/
 
 # Model cache
 .cache/frontend/node_modules/
+
+# Frontend
+frontend/node_modules/
