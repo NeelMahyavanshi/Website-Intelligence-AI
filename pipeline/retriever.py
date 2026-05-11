@@ -139,7 +139,7 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     global _rerank_model
     if not _rerank_model:
         from sentence_transformers import CrossEncoder
-        _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
+        _rerank_model = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-2-v2")
         logger.debug("Reranker model loaded")
     scores = _rerank_model.predict([(query, r["text"]) for r in results])
     for r, score in zip(results, scores):
