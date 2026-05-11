@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: website-intelligence-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: API_PORT
+        value: 8001
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: CHROMADB_TENANT
+        sync: false
+      - key: CHROMADB_DATABASE
+        value: main
+      - key: CHROMADB_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: HF_TOKEN
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_ENDPOINT
+        value: https://api.smith.langchain.com
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_TRACING_V2
+        value: "true"
+      - key: LANGSMITH_PROJECT
+        value: website-intelligence-ai
