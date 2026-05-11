@@ -15,27 +15,26 @@ router = APIRouter()
 @router.get("/companies")
 async def get_companies() -> list:
 
-    response = db.table("ingest_jobs").select("company_id, start_url, status, company_type").execute()
+    response = db.table("ingest_jobs").select("id,company_id, start_url, status, company_type").order("created_at", desc=True).execute()
 
     logger.info("Fetched ingest jobs for companies: %s", response.data)
 
     distinct_companies = []
 
-    if response.data: 
+    seen = set()
 
-        seen = set()
-        for row in response.data:
-            if row["company_id"] not in seen:
+    if not response.data:
+        return []
+    
+    for row in response.data:
+
+        if row["company_id"] not in seen:
                 seen.add(row["company_id"])
                 distinct_companies.append(row)
-            
-            else:
-                continue
-    else:
-        return []
     
     logger.info("Fetched distinct companies: %s", distinct_companies)
     return distinct_companies
+    
 
 
 @router.delete("/companies/{company_id}")

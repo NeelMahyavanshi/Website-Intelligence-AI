@@ -232,41 +232,77 @@ function domain(startUrl) {
   catch { return startUrl; }
 }
 
-// ─── Company card ──────────────────────────────────────────────────────────────
-function CompanyCard({ company, selected, onClick, isIngesting }) {
+// ─── Status badge ──────────────────────────────────────────────────────────────
+const STATUS_CONFIG = {
+  completed:        { color: "text-emerald-400", dot: "bg-emerald-400", label: "Ready"     },
+  in_progress:      { color: "text-blue-400",    dot: "bg-blue-400 animate-pulse", label: "Crawling"  },
+  chunking_failed:  { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
+  embedding_failed: { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
+  failed:           { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
+};
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] ?? { color: "text-[#6E6E8A]", dot: "bg-[#6E6E8A]", label: status };
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group ${
-        selected
-          ? "bg-[#6366F1]/15 border border-[#6366F1]/40"
-          : "hover:bg-[#1A1A24] border border-transparent"
-      }`}
-    >
-      <div className="relative flex-shrink-0">
-        <img
-          src={favicon(company.start_url)}
-          alt={company.company_id}
-          className="w-7 h-7 rounded-md bg-[#1A1A24]"
-          onError={e => { e.target.style.display = "none"; }}
-        />
-        {isIngesting && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-500 rounded-full
-                           border border-[#111118] animate-pulse" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-medium truncate ${
-            selected ? "text-[#E8E8F0]" : "text-[#C9C9D4] group-hover:text-[#E8E8F0]"
-          }`}>
-            {company.company_id}
-          </span>
-          <TypeBadge type={company.company_type} />
+    <span className={`flex items-center gap-1 text-[10px] ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+// ─── Company card ──────────────────────────────────────────────────────────────
+function CompanyCard({ company, selected, onClick, isIngesting, onResume }) {
+  const isStuck = ["chunking_failed", "embedding_failed", "failed"].includes(company.status);
+  const isRunning = isIngesting || company.status === "in_progress";
+
+  return (
+    <div className={`w-full rounded-xl transition-all border ${
+      selected ? "bg-[#6366F1]/15 border-[#6366F1]/40" : "hover:bg-[#1A1A24] border-transparent"
+    }`}>
+      <button
+        onClick={onClick}
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left group"
+      >
+        <div className="relative flex-shrink-0">
+          <img
+            src={favicon(company.start_url)}
+            alt={company.company_id}
+            className="w-7 h-7 rounded-md bg-[#1A1A24]"
+            onError={e => { e.target.style.display = "none"; }}
+          />
+          {isRunning && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-500 rounded-full
+                             border border-[#111118] animate-pulse" />
+          )}
         </div>
-        <span className="text-[11px] text-[#6E6E8A] truncate block">{domain(company.start_url)}</span>
-      </div>
-    </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-medium truncate ${
+              selected ? "text-[#E8E8F0]" : "text-[#C9C9D4] group-hover:text-[#E8E8F0]"
+            }`}>
+              {company.company_id}
+            </span>
+            <TypeBadge type={company.company_type} />
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[11px] text-[#6E6E8A] truncate">{domain(company.start_url)}</span>
+            <StatusBadge status={company.status} />
+          </div>
+        </div>
+      </button>
+      {isStuck && (
+        <div className="px-3 pb-2.5">
+          <button
+            onClick={e => { e.stopPropagation(); onResume(company.id); }}
+            className="w-full py-1.5 text-[11px] font-medium text-orange-400 border border-orange-400/30
+                       hover:bg-orange-400/10 rounded-lg transition-colors"
+          >
+            Resume pipeline
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -594,6 +630,16 @@ export default function App() {
     fetchCompanies();
   };
 
+  const handleResume = async (jobId) => {
+    try {
+      await api(`/ingest/resume/${jobId}`, { method: "POST" });
+      setActiveJobs(prev => ({ ...prev, [jobId]: { ...prev[jobId], status: "in_progress" } }));
+      fetchCompanies();
+    } catch {
+      alert("Failed to resume pipeline. Check the API logs.");
+    }
+  };
+
   const isCompanyIngesting = (company) =>
     Object.values(activeJobs).some(j => {
       try {
@@ -632,6 +678,7 @@ export default function App() {
                 selected={selectedCompany?.company_id === company.company_id}
                 onClick={() => setSelectedCompany(company)}
                 isIngesting={isCompanyIngesting(company)}
+                onResume={handleResume}
               />
             ))
           )}
