@@ -542,4 +542,4 @@ MIT License — see [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by [Your Name] — AI Engineer in Training**
+**Built with ❤️ by Neel Mahyavanshi — AI Engineer in Training**
