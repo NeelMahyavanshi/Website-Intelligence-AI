@@ -5,7 +5,6 @@
 from pydantic import BaseModel
 from pipeline.store import get_collection, build_company_config
 from llm_model import llm
-from sentence_transformers import CrossEncoder
 import hashlib
 from chromadb.api.types import Where
 from chromadb import K, Knn, Rrf, Search
@@ -139,6 +138,7 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     """
     global _rerank_model
     if not _rerank_model:
+        from sentence_transformers import CrossEncoder
         _rerank_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
         logger.debug("Reranker model loaded")
     scores = _rerank_model.predict([(query, r["text"]) for r in results])
