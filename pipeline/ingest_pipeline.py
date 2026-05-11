@@ -10,6 +10,7 @@ from utils.database import db
 from utils.helpers import page_hash
 from utils.logger import get_logger
 from pipeline.embedder import run_embedding
+import time
 
 logger = get_logger("INGEST_PIPELINE")
 
@@ -196,6 +197,8 @@ async def run_chunking(url: str) -> dict:
             .update({"status": "chunked"})\
             .eq("id", page.get("id"))\
             .execute()
+        
+        time.sleep(3)
     
     logger.info("Chunking completed for company ID: %s, total chunks created: %d", company_id, chunks_created)
 

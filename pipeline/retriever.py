@@ -146,14 +146,14 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
 # CONFIDENCE FILTERING 
 # ============================================================
 
-def filter_confidence(results: list[dict], threshold: float = 0.02) -> list[dict]:
-    """
-    Filters out results that are below a certain confidence threshold.
-    - This can be based on the similarity score from the hybrid query or an additional relevance score from a reranking step.
-    - Setting an appropriate threshold can help ensure that only relevant results are returned to the user.
-    """
+# def filter_confidence(results: list[dict], threshold: float = 0.3) -> list[dict]:
+#     """
+#     Filters out results that are below a certain confidence threshold.
+#     - This can be based on the similarity score from the hybrid query or an additional relevance score from a reranking step.
+#     - Setting an appropriate threshold can help ensure that only relevant results are returned to the user.
+#     """
     
-    return [r for r in results if r.get("rerank_score", 0) >= threshold]
+#     return [r for r in results if r.get("rerank_score", 0) >= threshold]
 
 
 # ============================================================
@@ -331,11 +331,14 @@ def retrieve(query: str, company_id: str, k: int = 15):
         reranked = unique
 
     # Take top-k after reranking, then apply confidence
+    # top = reranked[:k]
+    # confident = filter_confidence(top)
+    # if not confident:
+    #     logger.debug("No results passed confidence threshold, using top 3")
+    #     confident = confident or top[:3]
+
     top = reranked[:k]
-    confident = filter_confidence(top)
-    if not confident:
-        logger.debug("No results passed confidence threshold, using top 3")
-        confident = top[:3]
+    confident = top if top else top[:3]
 
     context, sources = format_context(confident)
     logger.info("Retrieval complete: %d results, confidence filtered", len(confident))

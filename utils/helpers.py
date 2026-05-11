@@ -13,7 +13,7 @@ def extract_company_id(url: str) -> str:
     extracted = tldextract.extract(url)
     if not extracted.domain:
         raise ValueError(f"Could not extract company ID from URL: {url}")
-    return extracted.domain
+    return f"{extracted.domain}.{extracted.suffix}"
 
 
 

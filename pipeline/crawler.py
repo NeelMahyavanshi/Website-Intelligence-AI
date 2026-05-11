@@ -105,7 +105,7 @@ async def plan_crawl(url: str) -> CrawlPlan_config:
 
     "site_type": str = Field(..., description="One of: docs, ecommerce, blog, support, unknown")
     "max_depth": int = Field(..., description="How deep to crawl. 1=surface only, 3=deep docs site")
-    "max_pages": int = Field(..., description="Max pages to crawl. Small site=20, large docs=100")
+    "max_pages": int = Field(..., description="Max pages to crawl. Small site=100, large docs=500")
     "pruning_threshold": float = Field(..., description="Threshold for pruning content. 0.3 to 0.8")
     "notes": str = Field(..., description="Any specific instructions for crawling this site")
 
@@ -177,9 +177,9 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
     )
 
     prune_filter = PruningContentFilter(
-        threshold=plan.pruning_threshold,           
-        threshold_type="dynamic",  
-        min_word_threshold=50      
+        threshold=min(plan.pruning_threshold, 0.4),       
+        threshold_type="fixed",  
+        min_word_threshold=10   
     )
     md_generator = DefaultMarkdownGenerator(content_filter=prune_filter)
 
@@ -190,7 +190,6 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
         verbose=False,
         markdown_generator=md_generator,
         scan_full_page=True,
-        stream=True  
     )
     
     count = 0
@@ -205,9 +204,11 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
 
             skipped_count = 0
             
-            async for result in await crawler.arun(start_url, config=config):
+            results = await crawler.arun(start_url, config=config)
 
-                if not result.success or not result.markdown:
+            for result in results:
+
+                if not result.success or not result.markdown or not result.markdown.fit_markdown:
                     logger.warning("Crawl failed for %s: %s", result.url, result.error_message)
                     failed_count += 1
                     continue

@@ -10,6 +10,7 @@ from pipeline.prompts.build_chunk_prompt import base_prompt, templates
 from typing import Dict, Any
 from pipeline.chunk_planner import create_chunk_plan
 from llm_model import llm
+from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger import get_logger
 import os
 load_dotenv(override=True)
@@ -149,14 +150,9 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
         if not text:
             removed_count += 1
             continue
-
+        
         # Skip chunks too short
-        if len(text) < 25 and len(text.split()) < 5:
-            removed_count += 1
-            continue
-
-        # Skip chunks too long
-        if len(text) > 4000:
+        if len(text) < 10 or len(text.split()) < 5:
             removed_count += 1
             continue
 
@@ -166,6 +162,31 @@ def validate_chunks(chunks: list[dict]) -> list[dict]:
             removed_count += 1
             continue
         seen_hashes.add(h)
+
+        # Split oversized chunks instead of dropping them
+        if len(text) > 5000:
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1800,
+                chunk_overlap=250,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            )
+            parts = splitter.split_text(text)
+            for part_idx, part in enumerate(parts, start=1):
+                part_meta = metadata.copy()
+                part_meta["split_part"] = part_idx
+                part_meta.setdefault("page_title", "unknown")
+                part_meta.setdefault("section_title", "")
+                part_meta.setdefault("summary", part[:160])
+                part_meta.setdefault("keywords", [])
+                part_meta.setdefault("entities", [])
+                part_meta.setdefault("content_type", "general")
+                part_meta.setdefault("extra_metadata", {})
+                h_part = text_hash(part)
+                if h_part not in seen_hashes:
+                    seen_hashes.add(h_part)
+                    validated.append({"text": part, "metadata": part_meta})
+            removed_count += 1
+            continue
 
         # Set metadata defaults
         metadata.setdefault("page_title", "unknown")
@@ -230,6 +251,7 @@ def fallback_chunk_page(content: str) -> list[dict]:
     logger.info("Fallback chunking complete: %d chunks created", len(chunks))
     return chunks
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=10, max=120))
 def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
     """Call LLM to chunk content based on given prompt.
     
@@ -275,7 +297,7 @@ def process_record(record: dict) -> list[dict]:
     # Step 2: Build prompt from plan
     prompt = build_chunk_prompt(plan)
 
-    raw_html = record.get("content", "").strip()[:10000]
+    raw_html = record.get("content", "").strip()
     crawled_metadata = record.get("metadata", {})
     timestamp = record.get("timestamp", "unknown")
 

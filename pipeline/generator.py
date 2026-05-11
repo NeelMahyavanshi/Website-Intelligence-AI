@@ -52,7 +52,7 @@ def build_prompt(query: str, messages:list[dict], context: str) -> list:
         ("user", f"latest question with context: {context}"),
     ]
     """
-    messages = "messages" or []
+    messages = messages or []
 
     prompt = [
         ("system", "You are an assistant that answers questions based on the following retrieved context from a company's website. Use ONLY the information in the context to answer the question. If you don't know the answer, say you don't know. Do NOT make up answers."),
