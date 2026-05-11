@@ -3,8 +3,6 @@ Ingest Pipeline
 
 """
 
-from pipeline.crawler import crawl_url
-from pipeline.chunker import process_record
 from utils.helpers import extract_company_id
 from utils.database import db
 from utils.helpers import page_hash
@@ -165,6 +163,7 @@ async def run_crawl(start_url: str, job_id: str) -> str:
 
     company_type = "default"
 
+    from pipeline.crawler import crawl_url
     async for page in crawl_url(start_url):
 
         # For each page: hash check → save to crawled_pages
@@ -223,6 +222,7 @@ async def run_chunking(url: str) -> dict:
 
     chunks_created = 0
 
+    from pipeline.chunker import process_record
     for page in pages_to_chunk.data:
 
         # Process page through chunking pipeline
