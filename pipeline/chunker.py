@@ -301,16 +301,19 @@ def process_record(record: dict) -> list[dict]:
     crawled_metadata = record.get("metadata", {})
     timestamp = record.get("timestamp", "unknown")
 
-    # Step 3: Call LLM chunker
-    try:
-        llm_response = call_llm_chunker(raw_html, prompt)
-        chunks = llm_response.chunks
-        logger.debug("LLM returned %d chunks for %s", len(chunks), url)
-    except Exception as e:
-        logger.warning("LLM chunking failed for %s, using fallback", url)
+    # LLM chunker struggles with very large content - use fallback for big pages
+    if len(raw_html) > 15000:
+        logger.info("Content too large for LLM chunker (%d chars), using fallback", len(raw_html))
         chunks_raw = fallback_chunk_page(raw_html)
-        # Convert to Chunk objects for consistency
         chunks = [Chunk(**c) for c in chunks_raw]
+    else:
+        try:
+            llm_response = call_llm_chunker(raw_html, prompt)
+            chunks = llm_response.chunks
+        except Exception as e:
+            logger.warning("LLM chunking failed for %s, using fallback", url)
+            chunks_raw = fallback_chunk_page(raw_html)
+            chunks = [Chunk(**c) for c in chunks_raw]
 
     # Step 4: Convert and validate
     chunks = [c.model_dump() for c in chunks]
