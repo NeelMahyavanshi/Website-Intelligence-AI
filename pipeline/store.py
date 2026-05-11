@@ -17,6 +17,7 @@ import re
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger import get_logger
+from langsmith import traceable
 import warnings
 warnings.filterwarnings("ignore", message=".*GOOGLE_API_KEY.*")
 
@@ -213,6 +214,7 @@ def get_collection(
 # SAFE UPSERT
 # ============================================================
 
+@traceable(name="safe_upsert")
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10)

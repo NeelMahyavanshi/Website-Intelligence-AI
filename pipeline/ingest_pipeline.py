@@ -10,6 +10,7 @@ from utils.database import db
 from utils.helpers import page_hash
 from utils.logger import get_logger
 from pipeline.embedder import run_embedding
+from langsmith import traceable
 import time
 
 logger = get_logger("INGEST_PIPELINE")
@@ -19,6 +20,7 @@ logger = get_logger("INGEST_PIPELINE")
 # CREATE INJEST JOB_ID
 # ============================================================
 
+@traceable(name="create_ingest_job")
 def create_ingest_job(start_url:str) -> str:
 
     """Creates a new ingest job record in the database and returns the job ID."""
@@ -46,6 +48,7 @@ def create_ingest_job(start_url:str) -> str:
 # SAVE_PAGES_TO_DB
 # ============================================================
 
+@traceable(name="save_pages_to_db")
 def save_pages_to_db(page: dict, job_id: str) -> str:
     """Saves crawled page data to the database.
     
@@ -92,6 +95,7 @@ def save_pages_to_db(page: dict, job_id: str) -> str:
 #  RUN CRAWL
 # ============================================================
 
+@traceable(name="run_crawl")
 async def run_crawl(start_url: str, job_id: str) -> str:
     """Main function to run the ingest pipeline.
     
@@ -152,6 +156,7 @@ async def run_crawl(start_url: str, job_id: str) -> str:
 # ============================================================
 #  RUN CHUNKING
 # ============================================================
+@traceable(name="run_chunking")
 async def run_chunking(url: str) -> dict:
     """Runs the chunking process for all pages of a completed crawl job."""
         
@@ -213,6 +218,7 @@ async def run_chunking(url: str) -> dict:
 # RUN INGEST
 # ============================================================
 
+@traceable(name="run_ingest")
 async def run_ingest(url: str, job_id: str) -> dict:
     """Main entry point for the ingest pipeline.
     

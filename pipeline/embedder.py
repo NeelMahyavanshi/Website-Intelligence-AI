@@ -3,6 +3,7 @@ from utils.logger import get_logger
 from utils.database import db
 from pipeline.store import get_collection
 from utils.helpers import extract_company_id
+from langsmith import traceable
 
 logger = get_logger("EMBEDDER")
 
@@ -10,6 +11,7 @@ logger = get_logger("EMBEDDER")
 # RUN EMBEDDING
 # ============================================================
 
+@traceable(name="run_embedding")
 async def run_embedding(url: str) -> dict:
     """Runs the embedding process for all chunks of a company.
     1. Get all chunks with status "ready_for_embedding" and "company_id"

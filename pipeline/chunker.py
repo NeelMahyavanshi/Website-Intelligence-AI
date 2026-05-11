@@ -12,6 +12,7 @@ from pipeline.chunk_planner import create_chunk_plan
 from llm_model import llm
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger import get_logger
+from langsmith import traceable
 import os
 load_dotenv(override=True)
 import re
@@ -251,6 +252,7 @@ def fallback_chunk_page(content: str) -> list[dict]:
     logger.info("Fallback chunking complete: %d chunks created", len(chunks))
     return chunks
 
+@traceable(name="call_llm_chunker")
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=10, max=120))
 def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
     """Call LLM to chunk content based on given prompt.
@@ -272,6 +274,7 @@ def call_llm_chunker(content: str, prompt: str) -> ChunkOutput:
     logger.debug("LLM returned %d chunks", len(response.chunks))
     return response
 
+@traceable(name="process_record")
 def process_record(record: dict) -> list[dict]:
     """Process a crawled page record through the chunking pipeline.
     

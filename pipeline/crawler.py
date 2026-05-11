@@ -11,6 +11,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from utils.logger import get_logger
 from pydantic import BaseModel, Field
 from llm_model import llm
+from langsmith import traceable
 from dotenv import load_dotenv
 from datetime import datetime
 from typing import AsyncGenerator
@@ -63,6 +64,7 @@ class CrawlPlan_config(BaseModel):
     notes: str = Field(..., description="Any specific instructions for crawling this site")
 
 
+@traceable(name="plan_crawl")
 async def plan_crawl(url: str) -> CrawlPlan_config:
     """
     Agent inspects the URL and decides how to crawl it.
@@ -127,6 +129,7 @@ async def plan_crawl(url: str) -> CrawlPlan_config:
 # CRAWL EXECUTION
 # ============================================================
 
+@traceable(name="crawl_url")
 async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
     """
     Crawls a URL using agent-decided configuration.

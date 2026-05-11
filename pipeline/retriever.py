@@ -10,6 +10,7 @@ import hashlib
 from chromadb.api.types import Where
 from chromadb import K, Knn, Rrf, Search
 from utils.database import db
+from langsmith import traceable
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
 from dotenv import load_dotenv
@@ -27,6 +28,7 @@ class RewrittenQuery(BaseModel):
     original_query: str
     rewritten_query: str
 
+@traceable(name="rewrite_query")
 def rewrite_query(user_query:str) -> str: 
     """
     Rewrites user query to better match the embedding space.
@@ -75,6 +77,7 @@ def safe_filter(f):
     filtered = {k: v for k, v in f.items() if k in ALLOWED_FILTERS}
     return filtered if filtered else None
 
+@traceable(name="build_filters")
 def build_filter(query) -> dict | None:
     """
     Extracts structured filters from the query if present.
@@ -127,6 +130,7 @@ def remove_duplicates(results: list[dict]) -> list[dict]:
 # Global reranker model instance to avoid reloading on every call
 _rerank_model = None
 
+@traceable(name="rerank")
 def rerank(query: str, results: list[dict]) -> list[dict]:
     """
     Reranks results using a more sophisticated model or additional features.
@@ -141,20 +145,6 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     for r, score in zip(results, scores):
         r["rerank_score"] = float(score)
     return sorted(results, key=lambda x: x["rerank_score"], reverse=True)
-
-# ============================================================
-# CONFIDENCE FILTERING 
-# ============================================================
-
-# def filter_confidence(results: list[dict], threshold: float = 0.3) -> list[dict]:
-#     """
-#     Filters out results that are below a certain confidence threshold.
-#     - This can be based on the similarity score from the hybrid query or an additional relevance score from a reranking step.
-#     - Setting an appropriate threshold can help ensure that only relevant results are returned to the user.
-#     """
-    
-#     return [r for r in results if r.get("rerank_score", 0) >= threshold]
-
 
 # ============================================================
 # RESULT FORMATTING
@@ -209,6 +199,7 @@ def parse_results(raw) -> list[dict]:
 # HYBRID SEARCH
 # ============================================================
 
+@traceable(name="hybrid_query")
 def hybrid_query(
     company_id: str,
     company_type: str,
@@ -268,7 +259,7 @@ def hybrid_query(
 # ============================================================
 # RETRIEVAL ORCHESTRATION
 # ============================================================
-
+@traceable(name="retrieve")  
 def retrieve(query: str, company_id: str, k: int = 15):
     """Main retrieval function that orchestrates query rewriting, filtering, hybrid search, reranking, and result formatting.
     

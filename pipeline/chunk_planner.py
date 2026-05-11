@@ -9,6 +9,7 @@ from typing import List, Literal
 from pipeline.prompts.chunk_planner_prompt import chunk_planner_prompt as SYSTEM_PROMPT
 from llm_model import llm
 from utils.logger import get_logger
+from langsmith import traceable
 import os
 from dotenv import load_dotenv
 
@@ -147,6 +148,7 @@ def heuristic_router(record: dict) -> ChunkPlan:
 # Configure LLM for structured output
 llm_chunk_planner = llm.with_structured_output(ChunkPlan)
 
+@traceable(name="llm_planner")
 def llm_planner(record: dict) -> ChunkPlan:
     """Use LLM to analyze page content and create optimal chunking plan.
     
@@ -185,6 +187,7 @@ def llm_planner(record: dict) -> ChunkPlan:
     logger.debug("LLM plan: type=%s style=%s words=%d", response.page_type, response.chunk_style, response.target_chunk_words)
     return response
 
+@traceable(name="create_chunk_plan")
 def create_chunk_plan(record: dict) -> ChunkPlan:
     """Main entry point for chunk planning.
     

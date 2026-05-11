@@ -6,6 +6,7 @@ Generates answers to user queries based on retrieved context from the knowledge 
 
 from llm_model import llm
 from utils.logger import get_logger
+from langsmith import traceable
 
 logger = get_logger("GENERATOR")
 
@@ -67,7 +68,7 @@ def build_prompt(query: str, messages:list[dict], context: str) -> list:
 # ============================================================
 # ANSWER GENERATION
 # ============================================================
-
+@traceable(name="generate")
 def generate(query: str, messages: list[dict] | None, retrieval_result: dict) -> dict:
     """Generates an answer to the user query based on retrieved context.
     
