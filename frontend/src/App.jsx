@@ -2,13 +2,30 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
-  Plus, Send, X, Loader2, Copy, Check,
-  MessageSquare, Globe, ExternalLink,
+  ArrowUpRight,
+  BookOpen,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  Clock3,
+  Copy,
+  Database,
+  ExternalLink,
+  FileText,
+  Globe,
+  Layers3,
+  Loader2,
+  MessageSquare,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Sparkles,
+  X,
 } from "lucide-react";
 
-// ─── API ───────────────────────────────────────────────────────────────────────
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 async function api(path, options = {}) {
@@ -20,56 +37,165 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-// ─── Config ────────────────────────────────────────────────────────────────────
-const TYPE_CONFIG = {
-  docs:      { color: "bg-blue-500/20 text-blue-400 border-blue-500/30",   label: "Docs"    },
-  tech_docs: { color: "bg-blue-500/20 text-blue-400 border-blue-500/30",   label: "Docs"    },
-  blog:      { color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30", label: "Blog" },
-  ecommerce: { color: "bg-orange-500/20 text-orange-400 border-orange-500/30", label: "Shop" },
-  support:   { color: "bg-purple-500/20 text-purple-400 border-purple-500/30", label: "Help" },
-  default:   { color: "bg-gray-500/20 text-gray-400 border-gray-500/30",   label: "Web"     },
+const SUGGESTED_QUESTIONS = {
+  docs: ["How do I install it?", "What are the main features?", "Show me a quick start example"],
+  tech_docs: ["How do I get started?", "What is the API reference?", "Show me a configuration example"],
+  ecommerce: ["What products do you offer?", "What are your shipping options?", "How do I return an item?"],
+  blog: ["What topics do you cover?", "Who writes for this blog?", "What are your most popular posts?"],
+  support: ["How do I contact support?", "What are the most common issues?", "How do I reset my password?"],
+  default: ["What does this website offer?", "How can I get started?", "Who is this for?"],
 };
 
-// ─── Copy button ───────────────────────────────────────────────────────────────
+const TYPE_CONFIG = {
+  docs: { label: "Docs", className: "bg-blue-50 text-blue-700 ring-blue-100", icon: BookOpen },
+  tech_docs: { label: "Docs", className: "bg-blue-50 text-blue-700 ring-blue-100", icon: BookOpen },
+  blog: { label: "Blog", className: "bg-emerald-50 text-emerald-700 ring-emerald-100", icon: FileText },
+  ecommerce: { label: "Shop", className: "bg-amber-50 text-amber-800 ring-amber-100", icon: Database },
+  support: { label: "Help", className: "bg-violet-50 text-violet-700 ring-violet-100", icon: MessageSquare },
+  default: { label: "Web", className: "bg-slate-100 text-slate-700 ring-slate-200", icon: Globe },
+};
+
+const STATUS_CONFIG = {
+  completed: {
+    label: "Ready",
+    icon: Check,
+    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    dot: "bg-emerald-500",
+  },
+  in_progress: {
+    label: "Indexing",
+    icon: Loader2,
+    className: "bg-blue-50 text-blue-700 ring-blue-100",
+    dot: "bg-blue-500 animate-pulse",
+  },
+  chunking_failed: {
+    label: "Needs resume",
+    icon: CircleAlert,
+    className: "bg-rose-50 text-rose-700 ring-rose-100",
+    dot: "bg-rose-500",
+  },
+  embedding_failed: {
+    label: "Needs resume",
+    icon: CircleAlert,
+    className: "bg-rose-50 text-rose-700 ring-rose-100",
+    dot: "bg-rose-500",
+  },
+  failed: {
+    label: "Failed",
+    icon: CircleAlert,
+    className: "bg-rose-50 text-rose-700 ring-rose-100",
+    dot: "bg-rose-500",
+  },
+};
+
+function cx(...classes) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function favicon(startUrl) {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(startUrl).hostname}&sz=64`;
+  } catch {
+    return null;
+  }
+}
+
+function domain(startUrl) {
+  try {
+    return new URL(startUrl).hostname;
+  } catch {
+    return startUrl;
+  }
+}
+
+function shortDomain(startUrl) {
+  const host = domain(startUrl);
+  return host.replace(/^www\./, "");
+}
+
+function TypeBadge({ type, compact = false }) {
+  const cfg = TYPE_CONFIG[type] ?? TYPE_CONFIG.default;
+  const Icon = cfg.icon;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-full font-medium ring-1 ring-inset",
+        compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs",
+        cfg.className
+      )}
+    >
+      <Icon size={compact ? 11 : 12} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function StatusBadge({ status, compact = false }) {
+  const cfg = STATUS_CONFIG[status] ?? {
+    label: status || "Unknown",
+    icon: Clock3,
+    className: "bg-slate-100 text-slate-600 ring-slate-200",
+    dot: "bg-slate-400",
+  };
+  const Icon = cfg.icon;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1.5 rounded-full font-medium ring-1 ring-inset",
+        compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs",
+        cfg.className
+      )}
+    >
+      {Icon === Loader2 ? <Icon size={compact ? 11 : 12} className="animate-spin" /> : <Icon size={compact ? 11 : 12} />}
+      {cfg.label}
+    </span>
+  );
+}
+
 function CopyButton({ text, className = "" }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1800);
   };
+
   return (
     <button
       onClick={handleCopy}
-      className={`flex items-center gap-1 text-xs transition-colors ${
-        copied ? "text-emerald-400" : "text-[#6E6E8A] hover:text-[#C9C9D4]"
-      } ${className}`}
+      className={cx(
+        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition",
+        copied ? "text-emerald-700 bg-emerald-50" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+        className
+      )}
     >
-      {copied ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy</>}
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+      {copied ? "Copied" : "Copy"}
     </button>
   );
 }
 
-// ─── Code block ────────────────────────────────────────────────────────────────
 function CodeBlock({ language, children }) {
   const code = String(children).replace(/\n$/, "");
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-[#2A2A3A]">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#0D1117] border-b border-[#2A2A3A]">
-        <span className="text-[11px] text-[#6E6E8A] font-mono">{language || "code"}</span>
+    <div className="my-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {language || "code"}
+        </span>
         <CopyButton text={code} />
       </div>
       <SyntaxHighlighter
         language={language || "text"}
-        style={oneDark}
+        style={oneLight}
         customStyle={{
           margin: 0,
           borderRadius: 0,
-          background: "#0D1117",
+          background: "#ffffff",
           fontSize: "0.78rem",
-          lineHeight: "1.6",
+          lineHeight: "1.65",
         }}
-        wrapLines={true}
+        wrapLines
         lineProps={{ style: { background: "transparent", display: "block" } }}
       >
         {code}
@@ -78,7 +204,6 @@ function CodeBlock({ language, children }) {
   );
 }
 
-// ─── Markdown renderer ─────────────────────────────────────────────────────────
 function MarkdownContent({ content }) {
   return (
     <ReactMarkdown
@@ -88,42 +213,42 @@ function MarkdownContent({ content }) {
           const match = /language-(\w+)/.exec(className || "");
           if (!inline && match) return <CodeBlock language={match[1]}>{children}</CodeBlock>;
           return (
-            <code className="px-1.5 py-0.5 bg-[#0D1117] border border-[#2A2A3A] rounded text-[#58A6FF] text-[0.8em] font-mono">
+            <code className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[0.82em] text-slate-800">
               {children}
             </code>
           );
         },
-        p:          ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
-        ul:         ({ children }) => <ul className="mb-3 ml-4 space-y-1 list-disc">{children}</ul>,
-        ol:         ({ children }) => <ol className="mb-3 ml-4 space-y-1 list-decimal">{children}</ol>,
-        li:         ({ children }) => <li className="leading-relaxed">{children}</li>,
-        h1:         ({ children }) => <h1 className="text-lg font-bold mb-3 text-[#E8E8F0]">{children}</h1>,
-        h2:         ({ children }) => <h2 className="text-base font-semibold mb-2 text-[#E8E8F0]">{children}</h2>,
-        h3:         ({ children }) => <h3 className="text-sm font-semibold mb-1 text-[#E8E8F0]">{children}</h3>,
-        a:          ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer"
-             className="text-[#6366F1] hover:text-[#818CF8] underline transition-colors">
+        p: ({ children }) => <p className="mb-3 leading-7 text-slate-700 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="mb-3 ml-5 list-disc space-y-1 text-slate-700">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-3 ml-5 list-decimal space-y-1 text-slate-700">{children}</ol>,
+        li: ({ children }) => <li className="leading-7">{children}</li>,
+        h1: ({ children }) => <h1 className="mb-2 text-lg font-semibold text-slate-950">{children}</h1>,
+        h2: ({ children }) => <h2 className="mb-2 text-base font-semibold text-slate-950">{children}</h2>,
+        h3: ({ children }) => <h3 className="mb-1.5 text-sm font-semibold text-slate-900">{children}</h3>,
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-blue-700 underline decoration-blue-200 underline-offset-4 transition hover:text-blue-900"
+          >
             {children}
           </a>
         ),
         blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-[#6366F1] pl-4 my-3 text-[#8B8BAE] italic">
-            {children}
-          </blockquote>
+          <blockquote className="my-3 border-l-2 border-slate-300 pl-4 text-slate-600">{children}</blockquote>
         ),
-        table:      ({ children }) => (
-          <div className="overflow-x-auto my-3">
-            <table className="w-full text-sm border-collapse">{children}</table>
+        table: ({ children }) => (
+          <div className="my-4 overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full border-collapse text-sm">{children}</table>
           </div>
         ),
-        th:         ({ children }) => (
-          <th className="border border-[#2A2A3A] px-3 py-2 bg-[#1A1A24] text-left font-semibold text-[#E8E8F0]">
+        th: ({ children }) => (
+          <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             {children}
           </th>
         ),
-        td:         ({ children }) => (
-          <td className="border border-[#2A2A3A] px-3 py-2 text-[#C9C9D4]">{children}</td>
-        ),
+        td: ({ children }) => <td className="border-b border-slate-100 px-3 py-2 text-slate-700">{children}</td>,
       }}
     >
       {content}
@@ -131,250 +256,324 @@ function MarkdownContent({ content }) {
   );
 }
 
-// ─── Typing indicator ──────────────────────────────────────────────────────────
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <div className="w-7 h-7 rounded-full bg-[#6366F1]/20 border border-[#6366F1]/30 flex items-center justify-center flex-shrink-0">
-        <Globe size={12} className="text-[#6366F1]" />
-      </div>
-      <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#1A1A24] border border-[#2A2A3A] rounded-2xl rounded-tl-sm">
-        {[0, 1, 2].map(i => (
-          <span
-            key={i}
-            className="w-1.5 h-1.5 bg-[#6E6E8A] rounded-full animate-bounce"
-            style={{ animationDelay: `${i * 0.15}s` }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Source chip ───────────────────────────────────────────────────────────────
 function SourceChip({ url }) {
   let display = url;
   try {
     const u = new URL(url);
-    display = u.hostname + (u.pathname !== "/" ? u.pathname : "");
-    if (display.length > 45) display = display.slice(0, 42) + "…";
+    display = u.hostname.replace(/^www\./, "") + (u.pathname !== "/" ? u.pathname : "");
+    if (display.length > 48) display = `${display.slice(0, 45)}...`;
   } catch {}
+
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#1A1A24] border border-[#2A2A3A]
-                 hover:border-[#6366F1]/50 rounded-full text-[11px] text-[#6E6E8A] hover:text-[#C9C9D4]
-                 transition-colors"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-700"
     >
-      {display}
-      <ExternalLink size={9} />
+      <ExternalLink size={12} />
+      <span className="truncate">{display}</span>
     </a>
   );
 }
 
-// ─── Message bubble ────────────────────────────────────────────────────────────
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const uniqueSources = message.sources ? [...new Set(message.sources)] : [];
 
   if (isUser) {
     return (
-      <div className="flex justify-end px-4 py-1.5">
-        <div className="max-w-[72%] px-4 py-2.5 bg-[#6366F1] rounded-2xl rounded-tr-sm
-                        text-[#E8E8F0] text-sm leading-relaxed">
-          {message.content}
+      <div className="flex justify-end px-5 py-4">
+        <div className="max-w-[78%] rounded-2xl rounded-tr-md bg-slate-950 px-4 py-3 text-white shadow-sm">
+          <p className="text-sm leading-6">{message.content}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-3 px-4 py-1.5">
-      <div className="w-7 h-7 rounded-full bg-[#6366F1]/20 border border-[#6366F1]/30
-                      flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Globe size={12} className="text-[#6366F1]" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="px-4 py-3 bg-[#1A1A24] border border-[#2A2A3A] rounded-2xl rounded-tl-sm
-                        text-sm text-[#C9C9D4]">
-          <MarkdownContent content={message.content} />
+    <div className="px-5 py-5">
+      <div className="flex items-start gap-4">
+        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+          <Sparkles size={16} />
         </div>
-        {uniqueSources.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2 px-1">
-            {uniqueSources.map((src, i) => <SourceChip key={i} url={src} />)}
+        <div className="min-w-0 flex-1">
+          <div className="rounded-2xl rounded-tl-md border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <MarkdownContent content={message.content} />
           </div>
-        )}
+          {uniqueSources.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {uniqueSources.map((src, i) => (
+                <SourceChip key={i} url={src} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Type badge ────────────────────────────────────────────────────────────────
-function TypeBadge({ type }) {
-  const cfg = TYPE_CONFIG[type] ?? TYPE_CONFIG.default;
+function PipelineStatus({ stages }) {
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.color}`}>
-      {cfg.label}
-    </span>
+    <div className="px-5 py-5">
+      <div className="flex items-start gap-4">
+        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+        <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-950">Retrieval pipeline</p>
+            <span className="text-xs font-medium text-slate-500">live</span>
+          </div>
+          <div className="space-y-2">
+            {stages.map((stage) => (
+              <div key={stage.id} className="flex items-center gap-3 text-sm">
+                <div
+                  className={cx(
+                    "flex h-5 w-5 items-center justify-center rounded-full",
+                    stage.status === "running" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"
+                  )}
+                >
+                  {stage.status === "running" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                </div>
+                <span className={stage.status === "running" ? "font-medium text-slate-900" : "text-slate-600"}>
+                  {stage.label}
+                </span>
+                {stage.count != null && <span className="ml-auto text-xs text-slate-500">{stage.count} chunks</span>}
+                {stage.ms != null && stage.status === "done" && <span className="text-xs text-slate-400">{stage.ms}ms</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Favicon helper ────────────────────────────────────────────────────────────
-function favicon(startUrl) {
-  try { return `https://www.google.com/s2/favicons?domain=${new URL(startUrl).hostname}&sz=32`; }
-  catch { return null; }
-}
-
-function domain(startUrl) {
-  try { return new URL(startUrl).hostname; }
-  catch { return startUrl; }
-}
-
-// ─── Status badge ──────────────────────────────────────────────────────────────
-const STATUS_CONFIG = {
-  completed:        { color: "text-emerald-400", dot: "bg-emerald-400", label: "Ready"     },
-  in_progress:      { color: "text-blue-400",    dot: "bg-blue-400 animate-pulse", label: "Crawling"  },
-  chunking_failed:  { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
-  embedding_failed: { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
-  failed:           { color: "text-red-400",     dot: "bg-red-400",    label: "Failed"     },
-};
-
-function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] ?? { color: "text-[#6E6E8A]", dot: "bg-[#6E6E8A]", label: status };
+function TypingIndicator() {
   return (
-    <span className={`flex items-center gap-1 text-[10px] ${cfg.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
-    </span>
+    <div className="px-5 py-5">
+      <div className="flex items-center gap-4">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+          <Sparkles size={16} />
+        </div>
+        <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Company card ──────────────────────────────────────────────────────────────
+function SourceDrawer({ chunks, onClose }) {
+  return (
+    <aside className="hidden w-96 flex-shrink-0 border-l border-slate-200 bg-white xl:flex xl:flex-col">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">Evidence</p>
+          <p className="text-xs text-slate-500">{chunks.length} retrieved chunks used by the answer</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+          aria-label="Close sources"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {chunks.length === 0 && (
+          <div className="px-5 py-10 text-center text-sm text-slate-500">No sources returned for this response.</div>
+        )}
+        {chunks.map((chunk, i) => (
+          <article key={i} className="border-b border-slate-100 px-5 py-4 transition hover:bg-slate-50">
+            <div className="mb-3 flex items-start gap-3">
+              <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <a
+                  href={chunk.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate text-sm font-semibold text-slate-900 transition hover:text-blue-700"
+                >
+                  {chunk.url?.replace(/^https?:\/\//, "")}
+                </a>
+                {chunk.section && <p className="mt-1 truncate text-xs text-slate-500">{chunk.section}</p>}
+              </div>
+              {chunk.score > 0 && (
+                <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                  {chunk.score.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <p className="line-clamp-6 text-sm leading-6 text-slate-600">{chunk.text}</p>
+          </article>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 function CompanyCard({ company, selected, onClick, isIngesting, onResume }) {
   const isStuck = ["chunking_failed", "embedding_failed", "failed"].includes(company.status);
   const isRunning = isIngesting || company.status === "in_progress";
 
   return (
-    <div className={`w-full rounded-xl transition-all border ${
-      selected ? "bg-[#6366F1]/15 border-[#6366F1]/40" : "hover:bg-[#1A1A24] border-transparent"
-    }`}>
+    <div className="px-3">
       <button
         onClick={onClick}
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-left group"
+        className={cx(
+          "group w-full rounded-xl border p-3 text-left transition",
+          selected
+            ? "border-blue-200 bg-blue-50/80 shadow-sm"
+            : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white"
+        )}
       >
-        <div className="relative flex-shrink-0">
-          <img
-            src={favicon(company.start_url)}
-            alt={company.company_id}
-            className="w-7 h-7 rounded-md bg-[#1A1A24]"
-            onError={e => { e.target.style.display = "none"; }}
-          />
-          {isRunning && (
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-500 rounded-full
-                             border border-[#111118] animate-pulse" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium truncate ${
-              selected ? "text-[#E8E8F0]" : "text-[#C9C9D4] group-hover:text-[#E8E8F0]"
-            }`}>
-              {company.company_id}
-            </span>
-            <TypeBadge type={company.company_type} />
+        <div className="flex items-start gap-3">
+          <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200">
+            <Globe size={16} />
+            <img
+              src={favicon(company.start_url)}
+              alt=""
+              className="absolute h-5 w-5 rounded-sm"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+            {isRunning && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-white" />}
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[11px] text-[#6E6E8A] truncate">{domain(company.start_url)}</span>
-            <StatusBadge status={company.status} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-950">{company.company_id}</p>
+                <p className="mt-0.5 truncate text-xs text-slate-500">{shortDomain(company.start_url)}</p>
+              </div>
+              <ChevronRight
+                size={15}
+                className={cx("mt-1 flex-shrink-0 transition", selected ? "text-blue-600" : "text-slate-300 group-hover:text-slate-500")}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <StatusBadge status={isRunning ? "in_progress" : company.status} compact />
+              <TypeBadge type={company.company_type} compact />
+            </div>
           </div>
         </div>
       </button>
       {isStuck && (
-        <div className="px-3 pb-2.5">
-          <button
-            onClick={e => { e.stopPropagation(); onResume(company.id); }}
-            className="w-full py-1.5 text-[11px] font-medium text-orange-400 border border-orange-400/30
-                       hover:bg-orange-400/10 rounded-lg transition-colors"
-          >
-            Resume pipeline
-          </button>
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onResume(company.id);
+          }}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+        >
+          <RotateCcw size={13} />
+          Resume pipeline
+        </button>
       )}
     </div>
   );
 }
 
-// ─── Add company modal ─────────────────────────────────────────────────────────
 function AddCompanyModal({ onClose, onIngestStarted }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!url.trim()) return;
     setLoading(true);
     setError("");
+
     try {
       const data = await api("/ingest/", { method: "POST", body: JSON.stringify({ url: url.trim() }) });
       onIngestStarted(url.trim(), data.job_id);
       onClose();
     } catch {
-      setError("Failed to start ingestion. Is the API running?");
+      setError("Failed to start ingestion. Check that the API is running.");
       setLoading(false);
     }
   };
 
   return (
     <div
-      onClick={e => e.target === e.currentTarget && onClose()}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm"
     >
-      <div className="bg-[#111118] border border-[#2A2A3A] rounded-2xl p-6 w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-[#E8E8F0]">Add a website</h2>
-          <button onClick={onClose} className="text-[#6E6E8A] hover:text-[#E8E8F0] transition-colors">
-            <X size={16} />
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+          <div>
+            <p className="text-base font-semibold text-slate-950">Index a website</p>
+            <p className="mt-1 text-sm text-slate-500">Start a crawl job and add the site to your intelligence workspace.</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Close add website modal"
+          >
+            <X size={17} />
           </button>
         </div>
-
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="px-6 py-5">
+          <label htmlFor="website-url" className="mb-2 block text-sm font-medium text-slate-800">
+            Website URL
+          </label>
           <div className="relative">
-            <Globe size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6E6E8A]" />
+            <Globe size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
+              id="website-url"
               ref={inputRef}
               type="url"
               value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://example.com"
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://docs.example.com"
               disabled={loading}
-              className="w-full pl-11 pr-4 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl
-                         text-[#E8E8F0] text-sm placeholder-[#4A4A5A] focus:outline-none
-                         focus:border-[#6366F1] transition-colors disabled:opacity-50"
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:opacity-50"
             />
           </div>
-          {error && <p className="mt-2.5 text-xs text-red-400">{error}</p>}
-          <div className="flex gap-2 mt-4">
+          {error && (
+            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+          )}
+          <div className="mt-5 grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 text-sm text-[#6E6E8A] hover:text-[#E8E8F0] transition-colors rounded-xl border border-[#2A2A3A] hover:border-[#3A3A4A]"
+              className="h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !url.trim()}
-              className="flex-1 py-2.5 bg-[#6366F1] hover:bg-[#5558E3] disabled:opacity-40
-                         disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl
-                         transition-colors flex items-center justify-center gap-2"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {loading ? <><Loader2 size={13} className="animate-spin" /> Starting…</> : "Ingest"}
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Starting
+                </>
+              ) : (
+                <>
+                  <Plus size={16} />
+                  Start indexing
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -383,31 +582,135 @@ function AddCompanyModal({ onClose, onIngestStarted }) {
   );
 }
 
-// ─── Empty state ───────────────────────────────────────────────────────────────
-function EmptyState({ onAdd }) {
+function EmptyState({ onAdd, hasCompanies }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-      <div className="w-16 h-16 rounded-2xl bg-[#6366F1]/10 border border-[#6366F1]/20
-                      flex items-center justify-center mb-6">
-        <Globe size={28} className="text-[#6366F1]" />
+    <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_top_left,#eef6ff,transparent_34%),linear-gradient(180deg,#ffffff,#f8fafc)] px-8">
+      <div className="w-full max-w-3xl">
+        <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm">
+          <Sparkles size={14} className="text-blue-600" />
+          AI engineer demo workspace
+        </div>
+        <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-slate-950">
+          Ask questions against indexed websites, with sources you can inspect.
+        </h1>
+        <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
+          Select an indexed site from the sidebar to start querying. The app is designed to show the RAG pipeline clearly:
+          retrieved chunks, source links, and grounded answers.
+        </p>
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <button
+            onClick={onAdd}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+          >
+            <Plus size={16} />
+            Index website
+          </button>
+          {hasCompanies && <p className="text-sm text-slate-500">Or choose a ready website from the left.</p>}
+        </div>
+        <div className="mt-10 grid gap-3 sm:grid-cols-3">
+          {[
+            ["Crawl", "Collect useful pages from the target site."],
+            ["Chunk", "Prepare content for retrieval and grounding."],
+            ["Ask", "Query with visible evidence and sources."],
+          ].map(([title, body]) => (
+            <div key={title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-sm font-semibold text-slate-950">{title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">{body}</p>
+            </div>
+          ))}
+        </div>
       </div>
-      <h2 className="text-xl font-semibold text-[#E8E8F0] mb-2">Website Intelligence</h2>
-      <p className="text-sm text-[#6E6E8A] max-w-xs leading-relaxed">
-        Add any website and start asking questions about its content. The AI crawls, chunks, and indexes it automatically.
-      </p>
-      <button
-        onClick={onAdd}
-        className="mt-6 px-5 py-2.5 bg-[#6366F1] hover:bg-[#5558E3] text-white text-sm
-                   font-medium rounded-xl transition-colors flex items-center gap-2"
-      >
-        <Plus size={14} />
-        Add your first website
-      </button>
     </div>
   );
 }
 
-// ─── Chat panel ────────────────────────────────────────────────────────────────
+function StarterQuestions({ company, onSend }) {
+  const questions =
+    company.suggested_questions?.length > 0
+      ? company.suggested_questions
+      : SUGGESTED_QUESTIONS[company.company_type] ?? SUGGESTED_QUESTIONS.default;
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-5 py-12 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm ring-1 ring-slate-200">
+        <Search size={21} />
+      </div>
+      <h2 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">Query {company.company_id}</h2>
+      <p className="mt-2 max-w-lg text-sm leading-6 text-slate-600">
+        Start with one of these prompts, or ask anything that should be answerable from the indexed website.
+      </p>
+      <div className="mt-6 grid w-full gap-3 sm:grid-cols-3">
+        {questions.map((q, i) => (
+          <button
+            key={i}
+            onClick={() => onSend(q)}
+            className="group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+          >
+            <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-500 transition group-hover:bg-blue-50 group-hover:text-blue-700">
+              <MessageSquare size={15} />
+            </div>
+            <p className="text-sm font-medium leading-6 text-slate-800">{q}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WebsiteHeader({ company, onClear, storageKey }) {
+  return (
+    <header className="border-b border-slate-200 bg-white">
+      <div className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 ring-1 ring-slate-200">
+            <Globe size={20} />
+            <img
+              src={favicon(company.start_url)}
+              alt=""
+              className="absolute h-7 w-7 rounded-md"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">{company.company_id}</h1>
+              <StatusBadge status={company.status} />
+              <TypeBadge type={company.company_type} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+              <a
+                href={company.start_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1.5 font-medium text-slate-600 transition hover:text-blue-700"
+              >
+                <span className="truncate">{domain(company.start_url)}</span>
+                <ArrowUpRight size={14} />
+              </a>
+              <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
+              <span>Grounded answers from indexed content</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              onClear();
+              localStorage.removeItem(storageKey);
+            }}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+          >
+            <RotateCcw size={15} />
+            Clear chat
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 function ChatPanel({ company }) {
   const storageKey = `chat_${company.company_id}`;
 
@@ -421,18 +724,18 @@ function ChatPanel({ company }) {
   });
   const [input, setInput] = useState("");
   const [isQuerying, setIsQuerying] = useState(false);
+  const [stages, setStages] = useState([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerChunks, setDrawerChunks] = useState([]);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // Persist messages to localStorage (capped at 50)
   useEffect(() => {
     try {
-      const capped = messages.slice(-50);
-      localStorage.setItem(storageKey, JSON.stringify(capped));
+      localStorage.setItem(storageKey, JSON.stringify(messages.slice(-50)));
     } catch {}
   }, [messages, storageKey]);
 
-  // Load saved history when company changes
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
@@ -442,48 +745,108 @@ function ChatPanel({ company }) {
     }
     setInput("");
     textareaRef.current?.focus();
-  }, [company.company_id]);
+  }, [company.company_id, storageKey]);
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isQuerying]);
 
-  // Auto-resize textarea
   const handleInput = (e) => {
     e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 132)}px`;
   };
 
-  const sendMessage = async () => {
-    const query = input.trim();
+  const sendMessage = async (overrideText) => {
+    const query = (typeof overrideText === "string" ? overrideText : input).trim();
     if (!query || isQuerying) return;
 
-    // Build history before adding the new user message
-    const history = messages.map(m => ({ role: m.role, content: m.content }));
-    const userMsg = { role: "user", content: query };
-
-    setMessages(prev => [...prev, userMsg]);
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    setMessages((prev) => [...prev, { role: "user", content: query }]);
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setIsQuerying(true);
+    setStages([]);
 
     try {
-      const data = await api("/query/", {
+      const response = await fetch(`${API_BASE}/query/stream`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, url: company.start_url, messages: history }),
       });
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: data.answer || "Sorry, I couldn't generate a response.",
-        sources: data.sources || [],
-      }]);
+      if (!response.ok) throw new Error(`API error ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const handleStreamLine = (line) => {
+        if (!line.startsWith("data: ")) return;
+        let data;
+        try {
+          data = JSON.parse(line.slice(6));
+        } catch {
+          return;
+        }
+
+        if (data.type === "stage_start") {
+          setStages((prev) => [...prev, { id: data.stage, label: data.label, status: "running" }]);
+        } else if (data.type === "stage_done") {
+          setStages((prev) =>
+            prev.map((s) => (s.id === data.stage ? { ...s, status: "done", ms: data.ms, count: data.count ?? null } : s))
+          );
+        } else if (data.type === "answer") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: data.answer || "Sorry, I could not generate a response.",
+              sources: data.sources || [],
+              follow_ups: data.follow_ups || [],
+              chunks: data.chunks || [],
+            },
+          ]);
+          setStages([]);
+        } else if (data.type === "error") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Something went wrong. Please try again.",
+              sources: [],
+              follow_ups: [],
+              chunks: [],
+            },
+          ]);
+          setStages([]);
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          if (buffer.trim()) handleStreamLine(buffer.trim());
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          handleStreamLine(line);
+        }
+      }
     } catch {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "Something went wrong connecting to the API. Please try again.",
-        sources: [],
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Something went wrong connecting to the API. Please try again.",
+          sources: [],
+          follow_ups: [],
+          chunks: [],
+        },
+      ]);
+      setStages([]);
     } finally {
       setIsQuerying(false);
     }
@@ -497,127 +860,194 @@ function ChatPanel({ company }) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-b border-[#2A2A3A] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <img
-            src={favicon(company.start_url)}
-            alt={company.company_id}
-            className="w-6 h-6 rounded"
-            onError={e => { e.target.style.display = "none"; }}
-          />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-[#E8E8F0]">{company.company_id}</span>
-              <TypeBadge type={company.company_type} />
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <WebsiteHeader company={company} onClear={() => setMessages([])} storageKey={storageKey} />
+
+        <div className="flex-1 overflow-y-auto bg-slate-50">
+          {messages.length === 0 && <StarterQuestions company={company} onSend={sendMessage} />}
+
+          <div className="mx-auto max-w-5xl divide-y divide-slate-100">
+            {messages.map((msg, i) => {
+              const isLastAssistant =
+                msg.role === "assistant" && i === messages.length - 1 && !isQuerying && msg.follow_ups?.length > 0;
+              return (
+                <div key={i}>
+                  <MessageBubble message={msg} />
+                  {msg.role === "assistant" && msg.chunks?.length > 0 && (
+                    <div className="px-5 pb-4 pl-[4.25rem]">
+                      <button
+                        onClick={() => {
+                          setDrawerChunks(msg.chunks);
+                          setDrawerOpen(true);
+                        }}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-700"
+                      >
+                        <Layers3 size={13} />
+                        Inspect {msg.chunks.length} retrieved chunks
+                      </button>
+                    </div>
+                  )}
+                  {isLastAssistant && (
+                    <div className="flex flex-wrap gap-2 px-5 pb-5 pl-[4.25rem]">
+                      {msg.follow_ups.map((q, j) => (
+                        <button
+                          key={j}
+                          onClick={() => sendMessage(q)}
+                          className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {isQuerying && stages.length === 0 && <TypingIndicator />}
+          {isQuerying && stages.length > 0 && <PipelineStatus stages={stages} />}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="border-t border-slate-200 bg-white px-5 py-4">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex items-end gap-3 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-50">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onInput={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder={`Ask about ${company.company_id}...`}
+                disabled={isQuerying}
+                rows={1}
+                className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 disabled:opacity-40"
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={!input.trim() || isQuerying}
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Send message"
+              >
+                {isQuerying ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
+              </button>
             </div>
-            <a
-              href={company.start_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-[#6E6E8A] hover:text-[#6366F1] transition-colors"
-            >
-              {domain(company.start_url)}
-            </a>
+            <p className="mt-2 text-center text-xs text-slate-400">Enter to send. Shift + Enter for a new line.</p>
           </div>
         </div>
-        <button
-          onClick={() => { setMessages([]); localStorage.removeItem(storageKey); }}
-          className="text-xs text-[#6E6E8A] hover:text-[#E8E8F0] px-3 py-1.5 border border-[#2A2A3A]
-                     hover:border-[#6366F1]/40 rounded-lg transition-all"
-        >
-          New chat
-        </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-0.5 min-h-0">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-12 h-12 rounded-xl bg-[#6366F1]/10 border border-[#6366F1]/20
-                            flex items-center justify-center mb-4">
-              <MessageSquare size={20} className="text-[#6366F1]" />
-            </div>
-            <p className="text-sm text-[#6E6E8A]">
-              Ask anything about{" "}
-              <span className="text-[#E8E8F0] font-medium">{company.company_id}</span>
-            </p>
-          </div>
-        )}
-        {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
-        {isQuerying && <TypingIndicator />}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input bar */}
-      <div className="px-4 py-4 border-t border-[#2A2A3A] flex-shrink-0">
-        <div className="flex items-end gap-3 bg-[#1A1A24] border border-[#2A2A3A]
-                        focus-within:border-[#6366F1]/50 rounded-2xl px-4 py-3 transition-colors">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder={`Ask about ${company.company_id}…`}
-            disabled={isQuerying}
-            rows={1}
-            className="flex-1 bg-transparent text-sm text-[#E8E8F0] placeholder-[#4A4A5A]
-                       resize-none focus:outline-none leading-relaxed disabled:opacity-50"
-            style={{ maxHeight: "120px" }}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || isQuerying}
-            className="w-8 h-8 bg-[#6366F1] hover:bg-[#5558E3] disabled:opacity-30
-                       disabled:cursor-not-allowed rounded-lg flex items-center justify-center
-                       flex-shrink-0 transition-colors"
-          >
-            {isQuerying
-              ? <Loader2 size={13} className="text-white animate-spin" />
-              : <Send size={13} className="text-white" />}
-          </button>
-        </div>
-        <p className="text-center text-[10px] text-[#4A4A5A] mt-2">
-          Enter to send · Shift+Enter for new line
-        </p>
-      </div>
+      {drawerOpen && <SourceDrawer chunks={drawerChunks} onClose={() => setDrawerOpen(false)} />}
     </div>
   );
 }
 
-// ─── Root ──────────────────────────────────────────────────────────────────────
+function Sidebar({ companies, selectedCompany, onSelect, isCompanyIngesting, onResume, onAdd }) {
+  const readyCount = companies.filter((company) => company.status === "completed").length;
+
+  return (
+    <aside className="flex w-80 flex-shrink-0 flex-col border-r border-slate-200 bg-slate-100/80">
+      <div className="border-b border-slate-200 px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
+            <Globe size={19} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-base font-semibold tracking-tight text-slate-950">WebIntel</p>
+            <p className="text-xs font-medium text-slate-500">Agentic RAG workspace</p>
+          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <p className="text-lg font-semibold text-slate-950">{companies.length}</p>
+            <p className="text-xs text-slate-500">Indexed sites</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <p className="text-lg font-semibold text-slate-950">{readyCount}</p>
+            <p className="text-xs text-slate-500">Ready</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-5 pb-2 pt-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Indexed websites</p>
+        <button
+          onClick={onAdd}
+          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-950"
+          aria-label="Add website"
+        >
+          <Plus size={16} />
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-2 overflow-y-auto pb-4">
+        {companies.length === 0 ? (
+          <div className="mx-3 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-center">
+            <Globe size={22} className="mx-auto text-slate-400" />
+            <p className="mt-3 text-sm font-semibold text-slate-800">No websites yet</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Index a website to start the demo flow.</p>
+          </div>
+        ) : (
+          companies.map((company) => (
+            <CompanyCard
+              key={company.company_id}
+              company={company}
+              selected={selectedCompany?.company_id === company.company_id}
+              onClick={() => onSelect(company)}
+              isIngesting={isCompanyIngesting(company)}
+              onResume={onResume}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="border-t border-slate-200 p-4">
+        <button
+          onClick={onAdd}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+        >
+          <Plus size={16} />
+          Index website
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 export default function App() {
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [activeJobs, setActiveJobs] = useState({}); // job_id → { url, status }
+  const [activeJobs, setActiveJobs] = useState({});
 
   const fetchCompanies = useCallback(async () => {
     try {
       const data = await api("/companies");
-      setCompanies(Array.isArray(data) ? data : []);
+      const nextCompanies = Array.isArray(data) ? data : [];
+      setCompanies(nextCompanies);
+      setSelectedCompany((current) => {
+        if (!current) return nextCompanies[0] ?? null;
+        return nextCompanies.find((company) => company.company_id === current.company_id) ?? nextCompanies[0] ?? null;
+      });
     } catch {}
   }, []);
 
-  useEffect(() => { fetchCompanies(); }, [fetchCompanies]);
-
-  // Poll active ingest jobs
   useEffect(() => {
-    const running = Object.entries(activeJobs).filter(
-      ([, v]) => v.status === "started" || v.status === "in_progress"
-    );
+    fetchCompanies();
+  }, [fetchCompanies]);
+
+  useEffect(() => {
+    const running = Object.entries(activeJobs).filter(([, v]) => v.status === "started" || v.status === "in_progress");
     if (running.length === 0) return;
 
     const interval = setInterval(async () => {
       for (const [jobId] of running) {
         try {
           const data = await api(`/ingest/${jobId}`);
-          setActiveJobs(prev => ({ ...prev, [jobId]: { ...prev[jobId], ...data } }));
-          if (data.status === "completed" || data.status.includes("failed")) {
-            fetchCompanies();
-          }
+          setActiveJobs((prev) => ({ ...prev, [jobId]: { ...prev[jobId], ...data } }));
+          if (data.status === "completed" || data.status.includes("failed")) fetchCompanies();
         } catch {}
       }
     }, 3000);
@@ -626,14 +1056,14 @@ export default function App() {
   }, [activeJobs, fetchCompanies]);
 
   const handleIngestStarted = (url, jobId) => {
-    setActiveJobs(prev => ({ ...prev, [jobId]: { url, status: "started" } }));
+    setActiveJobs((prev) => ({ ...prev, [jobId]: { url, status: "started" } }));
     fetchCompanies();
   };
 
   const handleResume = async (jobId) => {
     try {
       await api(`/ingest/resume/${jobId}`, { method: "POST" });
-      setActiveJobs(prev => ({ ...prev, [jobId]: { ...prev[jobId], status: "in_progress" } }));
+      setActiveJobs((prev) => ({ ...prev, [jobId]: { ...prev[jobId], status: "in_progress" } }));
       fetchCompanies();
     } catch {
       alert("Failed to resume pipeline. Check the API logs.");
@@ -641,77 +1071,37 @@ export default function App() {
   };
 
   const isCompanyIngesting = (company) =>
-    Object.values(activeJobs).some(j => {
+    Object.values(activeJobs).some((j) => {
       try {
         return (
           new URL(j.url).hostname === new URL(company.start_url).hostname &&
           (j.status === "started" || j.status === "in_progress")
         );
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     });
 
   return (
-    <div className="flex h-screen bg-[#0A0A0F] text-[#E8E8F0] font-sans antialiased overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-56 bg-[#111118] border-r border-[#2A2A3A] flex flex-col flex-shrink-0">
-        {/* Logo */}
-        <div className="px-4 py-4 border-b border-[#2A2A3A]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-[#6366F1] flex items-center justify-center">
-              <Globe size={13} className="text-white" />
-            </div>
-            <span className="text-sm font-semibold text-[#E8E8F0] tracking-tight">WebIntel</span>
-          </div>
-        </div>
+    <div className="flex h-screen overflow-hidden bg-white text-slate-950 antialiased">
+      <Sidebar
+        companies={companies}
+        selectedCompany={selectedCompany}
+        onSelect={setSelectedCompany}
+        isCompanyIngesting={isCompanyIngesting}
+        onResume={handleResume}
+        onAdd={() => setAddOpen(true)}
+      />
 
-        {/* Companies */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {companies.length === 0 ? (
-            <p className="text-[11px] text-[#4A4A5A] text-center mt-10 px-4 leading-relaxed">
-              No sites yet.<br />Add one below.
-            </p>
-          ) : (
-            companies.map(company => (
-              <CompanyCard
-                key={company.company_id}
-                company={company}
-                selected={selectedCompany?.company_id === company.company_id}
-                onClick={() => setSelectedCompany(company)}
-                isIngesting={isCompanyIngesting(company)}
-                onResume={handleResume}
-              />
-            ))
-          )}
-        </div>
+      <main className="flex min-w-0 flex-1">
+        {selectedCompany ? (
+          <ChatPanel key={selectedCompany.company_id} company={selectedCompany} />
+        ) : (
+          <EmptyState onAdd={() => setAddOpen(true)} hasCompanies={companies.length > 0} />
+        )}
+      </main>
 
-        {/* Add button */}
-        <div className="p-3 border-t border-[#2A2A3A]">
-          <button
-            onClick={() => setAddOpen(true)}
-            className="w-full flex items-center gap-2 px-3 py-2.5 bg-[#6366F1]/10
-                       hover:bg-[#6366F1]/20 border border-[#6366F1]/30 hover:border-[#6366F1]/60
-                       rounded-xl text-sm text-[#6366F1] font-medium transition-all"
-          >
-            <Plus size={14} />
-            Add website
-          </button>
-        </div>
-      </div>
-
-      {/* Main */}
-      <div className="flex-1 flex min-w-0">
-        {selectedCompany
-          ? <ChatPanel key={selectedCompany.company_id} company={selectedCompany} />
-          : <EmptyState onAdd={() => setAddOpen(true)} />}
-      </div>
-
-      {/* Modal */}
-      {addOpen && (
-        <AddCompanyModal
-          onClose={() => setAddOpen(false)}
-          onIngestStarted={handleIngestStarted}
-        />
-      )}
+      {addOpen && <AddCompanyModal onClose={() => setAddOpen(false)} onIngestStarted={handleIngestStarted} />}
     </div>
   );
 }

@@ -11,9 +11,56 @@ from utils.helpers import page_hash
 from utils.logger import get_logger
 from pipeline.embedder import run_embedding
 from langsmith import traceable
+from pydantic import BaseModel
+from llm_model import llm
 import time
 
 logger = get_logger("INGEST_PIPELINE")
+
+
+# ============================================================
+# SUGGESTED QUESTIONS GENERATION
+# ============================================================
+
+class SuggestedQuestions(BaseModel):
+    questions: list[str]
+
+def generate_suggested_questions(company_id: str, company_type: str, job_id: str) -> list[str]:
+    """Samples a few chunks and asks the LLM to generate 3 realistic user questions.
+
+    Called once after embedding completes. Result stored in ingest_jobs.suggested_questions.
+    """
+    try:
+        sample = db.table("chunks")\
+            .select("text")\
+            .eq("company_id", company_id)\
+            .limit(5)\
+            .execute()
+
+        if not sample.data:
+            logger.warning("No chunks found for question generation: %s", company_id)
+            return []
+
+        # Cap each chunk at 400 chars to stay well within free-tier token limits
+        context = "\n\n".join(c["text"][:400] for c in sample.data)
+
+        prompt = f"""Based on this website content, generate exactly 3 short, specific questions a real user would ask.
+Questions must be grounded in the actual content — no generic questions.
+
+Content:
+{context}
+
+Return a JSON object with key "questions" containing a list of exactly 3 question strings."""
+
+        extractor = llm.with_structured_output(SuggestedQuestions)
+        result = extractor.invoke(prompt)
+        questions = [q.strip() for q in result.questions if q.strip()][:3]
+        logger.info("Generated %d suggested questions for %s", len(questions), company_id)
+        return questions
+
+    except Exception as e:
+        logger.error("Failed to generate suggested questions for %s: %s", company_id, e)
+        return []
 
 
 # ============================================================
@@ -245,7 +292,17 @@ async def handle_embedding_step(url: str, job_id: str, company_id: str) -> tuple
             .update({"status": "completed"})\
             .eq("id", job_id)\
             .execute()
-        
+
+        # Generate and store suggested questions based on actual content
+        job_meta = db.table("ingest_jobs").select("company_type").eq("id", job_id).execute()
+        company_type = job_meta.data[0].get("company_type", "default") if job_meta.data else "default"
+        questions = generate_suggested_questions(company_id, company_type, job_id)
+        if questions:
+            db.table("ingest_jobs")\
+                .update({"suggested_questions": questions})\
+                .eq("id", job_id)\
+                .execute()
+
         logger.info("Embedding completed successfully for company ID: %s", company_id)
         return True, {
             "status": "completed",
@@ -388,6 +445,7 @@ async def run_ingest(url: str, job_id: str) -> dict:
             logger.error("Embedding failed for company ID: %s", company_id)
             return {"status": "error", "message": "Embedding failed for this company"}
         
+        company_type = results.get("company_type", "default")
         db.table("ingest_jobs")\
             .update({
                 "status": "completed",
@@ -396,9 +454,18 @@ async def run_ingest(url: str, job_id: str) -> dict:
             })\
             .eq("id", job_id)\
             .execute()
+
+        # Generate and store suggested questions based on actual content
+        questions = generate_suggested_questions(company_id, company_type, job_id)
+        if questions:
+            db.table("ingest_jobs")\
+                .update({"suggested_questions": questions})\
+                .eq("id", job_id)\
+                .execute()
+
         return {
             "company_id": company_id,
-            "company_type": results.get("company_type", "default"),
+            "company_type": company_type,
             "chunks_embedded": embedding.get("chunks_embedded"),
             "pages_crawled": results.get("pages_crawled"),
             "chunks_created": chunks.get("chunks_created"),

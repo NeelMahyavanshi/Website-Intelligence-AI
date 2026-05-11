@@ -311,7 +311,7 @@ def retrieve(query: str, company_id: str, k: int = 15):
     if not unique:
         logger.warning("No results found for query")
         return {"context": "", "sources": [], "chunks": [],
-                "rewritten_query": rewritten, "metadata": []}
+                "rewritten_query": rewritten, "metadata": [], "company_type": company_type}
 
     # Rerank with the ORIGINAL user query (more faithful to intent)
     try:
@@ -341,4 +341,5 @@ def retrieve(query: str, company_id: str, k: int = 15):
         "rewritten_query": rewritten,
         "original_query": original_query,
         "metadata": [r["metadata"] for r in confident],
+        "company_type": company_type,
     }

@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/companies")
 async def get_companies() -> list:
 
-    response = db.table("ingest_jobs").select("id,company_id, start_url, status, company_type").order("created_at", desc=True).execute()
+    response = db.table("ingest_jobs").select("id, company_id, start_url, status, company_type, suggested_questions").order("created_at", desc=True).execute()
 
     logger.info("Fetched ingest jobs for companies: %s", response.data)
 
