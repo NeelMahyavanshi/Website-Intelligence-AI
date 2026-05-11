@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from app.routes import health, ingest, query, companies
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,9 +9,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
