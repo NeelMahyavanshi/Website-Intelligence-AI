@@ -13,6 +13,8 @@ from langsmith import traceable
 from concurrent.futures import ThreadPoolExecutor
 from utils.logger import get_logger
 from dotenv import load_dotenv
+import os
+import cohere
 
 load_dotenv(override=True)
 
@@ -126,8 +128,6 @@ def remove_duplicates(results: list[dict]) -> list[dict]:
 # RERANKING
 # ============================================================
 
-# Global reranker model instance to avoid reloading on every call
-_rerank_model = None
 
 @traceable(name="rerank")
 def rerank(query: str, results: list[dict]) -> list[dict]:
@@ -136,15 +136,29 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     - For example, you could use an LLM to score the relevance of each result to the query and sort them accordingly.
     - This can help improve the quality of the top results returned to the user.
     """
-    global _rerank_model
-    if not _rerank_model:
-        from sentence_transformers import CrossEncoder
-        _rerank_model = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-2-v2")
-        logger.debug("Reranker model loaded")
-    scores = _rerank_model.predict([(query, r["text"]) for r in results])
-    for r, score in zip(results, scores):
-        r["rerank_score"] = float(score)
-    return sorted(results, key=lambda x: x["rerank_score"], reverse=True)
+    # 1. get COHERE_API_KEY from env, if missing return results as-is
+
+    if not os.getenv("COHERE_API_KEY"):
+        return "No cohore API key is added, skipping reranking"
+    
+    # 2. init cohere client (lazy, cache in module-level variable)
+
+    co = cohere.ClientV2(os.getenv("COHERE_API_KEY"))
+    
+    # 3. extract just the text from each result to send to Cohere
+
+    text_results = [text for text in results.text]
+    
+    # 4. call cohere client.rerank() with model, query, documents, top_n
+    
+    # 5. loop over response.results:
+    #    - use item.index to get the original result dict
+    #    - attach item.relevance_score as rerank_score
+    #    - append to reranked list
+    
+    # 6. return reranked list (already sorted by Cohere)
+    
+    # 7. wrap steps 4-6 in try/except — on failure, log warning and return original results
 
 # ============================================================
 # RESULT FORMATTING
