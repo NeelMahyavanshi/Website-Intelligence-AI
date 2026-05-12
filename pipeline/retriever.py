@@ -151,6 +151,7 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     
     # 4. call cohere client.rerank() with model, query, documents, top_n
     
+    
     # 5. loop over response.results:
     #    - use item.index to get the original result dict
     #    - attach item.relevance_score as rerank_score
