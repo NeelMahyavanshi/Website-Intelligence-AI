@@ -128,6 +128,7 @@ def remove_duplicates(results: list[dict]) -> list[dict]:
 # RERANKING
 # ============================================================
 
+co = None
 
 @traceable(name="rerank")
 def rerank(query: str, results: list[dict]) -> list[dict]:
@@ -139,27 +140,38 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
     # 1. get COHERE_API_KEY from env, if missing return results as-is
 
     if not os.getenv("COHERE_API_KEY"):
-        return "No cohore API key is added, skipping reranking"
-    
-    # 2. init cohere client (lazy, cache in module-level variable)
+        logger.info("COHERE_API_KEY not set, skipping reranking")
+        return results
 
-    co = cohere.ClientV2(os.getenv("COHERE_API_KEY"))
+    # 2. init cohere client (lazy, cache in module-level variable)
+    global co
+    if co is None:
+        co = cohere.ClientV2(os.getenv("COHERE_API_KEY"))
     
     # 3. extract just the text from each result to send to Cohere
 
-    text_results = [text for text in results.text]
+    text_results = [r["text"] for r in results]
     
     # 4. call cohere client.rerank() with model, query, documents, top_n
+    try:
+        response = co.rerank(
+            model="rerank-v4.0-pro",
+            query=query,
+            documents=text_results,
+            top_n=5
+        )
+
+        reranked_list = []
+        for item in response.results:
+            r = results[item.index].copy()
+            r["rerank_score"] = float(item.relevance_score)
+            reranked_list.append(r)
+
+        return reranked_list
     
-    
-    # 5. loop over response.results:
-    #    - use item.index to get the original result dict
-    #    - attach item.relevance_score as rerank_score
-    #    - append to reranked list
-    
-    # 6. return reranked list (already sorted by Cohere)
-    
-    # 7. wrap steps 4-6 in try/except — on failure, log warning and return original results
+    except Exception as e:
+        logger.warning("Cohere reranking failed: %s, using original order", e)
+        return results
 
 # ============================================================
 # RESULT FORMATTING
