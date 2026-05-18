@@ -158,7 +158,7 @@ def rerank(query: str, results: list[dict]) -> list[dict]:
             model="rerank-v4.0-pro",
             query=query,
             documents=text_results,
-            top_n=5
+            top_n=15
         )
 
         reranked_list = []
