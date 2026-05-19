@@ -4,7 +4,7 @@ This module handles web crawling with intelligent planning using LLM agents.
 It determines the best crawling strategy for a given URL and executes the crawl.
 """
 
-from crawl4ai import AsyncUrlSeeder, AsyncWebCrawler, CrawlerRunConfig, PruningContentFilter,SeedingConfig, CacheMode
+from crawl4ai import AsyncUrlSeeder, AsyncWebCrawler, CrawlerRunConfig, SeedingConfig, CacheMode
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
@@ -177,12 +177,7 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
         on_state_change=save_checkpoint
     )
 
-    prune_filter = PruningContentFilter(
-        threshold=min(plan.pruning_threshold, 0.4),       
-        threshold_type="fixed",  
-        min_word_threshold=10   
-    )
-    md_generator = DefaultMarkdownGenerator(content_filter=prune_filter)
+    md_generator = DefaultMarkdownGenerator()
 
     config = CrawlerRunConfig(
         deep_crawl_strategy=strategy,
@@ -209,7 +204,7 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
 
             for result in results:
 
-                if not result.success or not result.markdown or not result.markdown.fit_markdown:
+                if not result.success or not result.markdown or not result.markdown.raw_markdown:
                     logger.warning("Crawl failed for %s: %s", result.url, result.error_message)
                     failed_count += 1
                     continue
@@ -217,7 +212,7 @@ async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
 
                 yield ({
                     "url": result.url,
-                    "content": result.markdown.fit_markdown,
+                    "content": result.markdown.raw_markdown,
                     "metadata": result.metadata,
                     "timestamp": datetime.now().isoformat(),
                     "crawl_config": {
