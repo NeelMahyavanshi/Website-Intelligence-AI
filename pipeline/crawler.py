@@ -64,7 +64,6 @@ class CrawlPlan_config(BaseModel):
     notes: str = Field(..., description="Any specific instructions for crawling this site")
 
 
-@traceable(name="plan_crawl")
 async def plan_crawl(url: str) -> CrawlPlan_config:
     """
     Agent inspects the URL and decides how to crawl it.
@@ -129,7 +128,6 @@ async def plan_crawl(url: str) -> CrawlPlan_config:
 # CRAWL EXECUTION
 # ============================================================
 
-@traceable(name="crawl_url")
 async def crawl_url(start_url: str) -> AsyncGenerator[dict, None]:
     """
     Crawls a URL using agent-decided configuration.

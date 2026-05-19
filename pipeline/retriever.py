@@ -78,7 +78,6 @@ def safe_filter(f):
     filtered = {k: v for k, v in f.items() if k in ALLOWED_FILTERS}
     return filtered if filtered else None
 
-@traceable(name="build_filters")
 def build_filter(query) -> dict | None:
     """
     Extracts structured filters from the query if present.

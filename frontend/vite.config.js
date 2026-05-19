@@ -6,10 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/ingest": "http://localhost:8000",
-      "/query": "http://localhost:8000",
-      "/companies": "http://localhost:8000",
-      "/health": "http://localhost:8000",
+      "/ingest": "http://localhost:8001",
+      "/query": "http://localhost:8001",
+      "/companies": "http://localhost:8001",
+      "/health": "http://localhost:8001",
     },
   },
 });

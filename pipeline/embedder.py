@@ -11,7 +11,6 @@ logger = get_logger("EMBEDDER")
 # RUN EMBEDDING
 # ============================================================
 
-@traceable(name="run_embedding")
 async def run_embedding(url: str) -> dict:
     """Runs the embedding process for all chunks of a company.
     1. Get all chunks with status "ready_for_embedding" and "company_id"

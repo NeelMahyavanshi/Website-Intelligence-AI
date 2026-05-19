@@ -148,7 +148,6 @@ def heuristic_router(record: dict) -> ChunkPlan:
 # Configure LLM for structured output
 llm_chunk_planner = llm.with_structured_output(ChunkPlan)
 
-@traceable(name="llm_planner")
 def llm_planner(record: dict) -> ChunkPlan:
     """Use LLM to analyze page content and create optimal chunking plan.
     
